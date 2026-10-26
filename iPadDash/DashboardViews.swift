@@ -1,12 +1,42 @@
 import UIKit
 
 // Views reproducing the TRMNL "Steps & Claude" layout from
-// klaushofrichter/trmnl-for-steps (black on white, e-ink style).
-// Sizes are the TRMNL CSS pixel values times `scale` (800x480 -> 1024x768).
+// klaushofrichter/trmnl-for-steps (black on white, e-ink style), plus a dark
+// variant. Sizes are the TRMNL CSS pixel values times `scale` (800x480 -> 1024x768).
 
 let scale: CGFloat = 1.28
-let ink = UIColor.black
-let paper = UIColor.white
+
+/// App-level light/dark theme; iOS 12 has no system dark mode.
+enum Theme {
+    private static let key = "darkMode"
+
+    static var isDark: Bool {
+        get { return UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+}
+
+// Light-gray ink rather than white keeps the dark theme easy on the eyes at night.
+var ink: UIColor { return Theme.isDark ? UIColor(white: 0.82, alpha: 1) : .black }
+var paper: UIColor { return Theme.isDark ? .black : .white }
+
+/// Re-applies the current theme to a view tree: label colors, drawn views, ink fills.
+func applyTheme(to view: UIView) {
+    if let label = view as? SpacedLabel { label.refresh() }
+    if view is InkView { view.backgroundColor = ink }
+    view.setNeedsDisplay()
+    view.subviews.forEach(applyTheme)
+}
+
+/// A solid line or divider in the ink color.
+final class InkView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = ink
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
 
 func font(_ size: CGFloat, _ weight: UIFont.Weight = .regular) -> UIFont {
     return UIFont.systemFont(ofSize: size * scale, weight: weight)
@@ -29,7 +59,12 @@ final class SpacedLabel: UILabel {
         minimumScaleFactor = 0.5
     }
 
+    private var rawText = ""
+
+    func refresh() { set(rawText) }
+
     func set(_ text: String) {
+        rawText = text
         let shown = uppercase ? text.uppercased() : text
         attributedText = NSAttributedString(string: shown, attributes: [
             .kern: kern,

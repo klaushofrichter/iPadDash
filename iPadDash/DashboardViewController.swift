@@ -34,8 +34,7 @@ final class DashboardViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = paper
 
-        let divider = UIView()
-        divider.backgroundColor = ink
+        let divider = InkView()
         let columns = UIStackView(arrangedSubviews: [stepsPanel, divider, claudePanel])
         columns.alignment = .fill
         divider.widthAnchor.constraint(equalToConstant: 2).isActive = true
@@ -46,8 +45,7 @@ final class DashboardViewController: UIViewController {
         titleLabel.textAlignment = .left
         instanceLabel.textAlignment = .right
         titleLabel.set("Steps & Claude")
-        let rule = UIView()
-        rule.backgroundColor = ink
+        let rule = InkView()
 
         for v in [columns, rule, titleBar] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -67,6 +65,9 @@ final class DashboardViewController: UIViewController {
             titleBar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
             titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -12),
         ])
+
+        // Tap anywhere to switch between light and dark; the choice is remembered.
+        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(toggleTheme)))
 
         #if DEBUG
         // simctl launch ... with SIMCTL_CHILD_IPADDASH_DEMO=1 shows fixed sample data.
@@ -99,6 +100,12 @@ final class DashboardViewController: UIViewController {
         super.viewWillDisappear(animated)
         fetchTimer?.invalidate()
         redrawTimer?.invalidate()
+    }
+
+    @objc private func toggleTheme() {
+        Theme.isDark.toggle()
+        view.backgroundColor = paper
+        applyTheme(to: view)
     }
 
     private func fetch() {
