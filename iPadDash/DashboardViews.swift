@@ -16,6 +16,7 @@ func applyTheme(to view: UIView) {
     if let label = view as? SpacedLabel { label.refresh() }
     if view is InkView { view.backgroundColor = ink }
     if view is PaperView { view.backgroundColor = paper }
+    if let countdown = view as? CountdownView { countdown.applyColors() }
     if let control = view as? UISegmentedControl {
         // iOS 12 draws segments from tintColor; iOS 13+ needs the selected fill and text colors set.
         control.tintColor = ink

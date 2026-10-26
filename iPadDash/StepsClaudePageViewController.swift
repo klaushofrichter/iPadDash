@@ -70,7 +70,7 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
             reserved.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 16),
             reserved.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
             reserved.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
-            reserved.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -48),
+            reserved.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -8),
         ])
 
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),

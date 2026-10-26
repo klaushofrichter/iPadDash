@@ -14,6 +14,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let dots = UIPageControl()
     private let slideFromTop = SlideFromTopTransition()
     private var autoMoveTimer: Timer?
+    private let countdown = CountdownView()
+    private let footerHeight: CGFloat = 36
 
     override var prefersStatusBarHidden: Bool { return true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
@@ -28,18 +30,29 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         pager.delegate = self
         pager.setViewControllers([pages[0]], direction: .forward, animated: false)
         addChild(pager)
-        pager.view.frame = view.bounds
-        pager.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(pager.view)
         pager.didMove(toParent: self)
 
+        // Footer strip below the pages: page dots centered, auto-move countdown at the right.
         dots.numberOfPages = pages.count
         dots.isUserInteractionEnabled = false
-        dots.translatesAutoresizingMaskIntoConstraints = false
+
+        for v in [pager.view!, dots, countdown] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+        }
         view.addSubview(dots)
+        view.addSubview(countdown)
+        let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
+            pager.view.topAnchor.constraint(equalTo: view.topAnchor),
+            pager.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            pager.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pager.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -footerHeight),
             dots.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dots.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            dots.centerYAnchor.constraint(equalTo: guide.bottomAnchor, constant: -footerHeight / 2),
+            // Same right margin as the pages' content and rules.
+            countdown.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
+            countdown.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
         ])
 
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
@@ -69,17 +82,23 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         super.viewWillDisappear(animated)
         autoMoveTimer?.invalidate()
         autoMoveTimer = nil
+        countdown.stop()
     }
 
     // MARK: - Auto-move
 
+    /// Starts the countdown over (full circle). Called on appear, on settings
+    /// changes and after a manual swipe; the auto-move setting itself is kept.
     @objc private func restartAutoMove() {
         autoMoveTimer?.invalidate()
         autoMoveTimer = nil
+        countdown.stop()
         let interval = Settings.autoMoveInterval
         guard interval > 0, pages.count > 1, view.window != nil, presentedViewController == nil else { return }
+        countdown.restart(interval: interval)
         autoMoveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.fadeToNextPage()
+            self?.countdown.nextCycle(interval: interval)
         }
     }
 
