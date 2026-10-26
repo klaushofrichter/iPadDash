@@ -53,6 +53,21 @@ extension Settings {
     }
 }
 
+extension Settings {
+    /// How often the front camera samples room brightness, in seconds; 0 means off.
+    static let ambientIntervals: [TimeInterval] = [0, 60, 300, 900]
+    private static let ambientKey = "ambientInterval"
+
+    static var ambientInterval: TimeInterval {
+        get {
+            guard UserDefaults.standard.object(forKey: ambientKey) != nil else { return 300 }
+            let stored = UserDefaults.standard.double(forKey: ambientKey)
+            return ambientIntervals.contains(stored) ? stored : 300
+        }
+        set { UserDefaults.standard.set(newValue, forKey: ambientKey) }
+    }
+}
+
 func intervalText(_ seconds: TimeInterval) -> String {
     return seconds < 60 ? "\(Int(seconds)) s" : "\(Int(seconds / 60)) min"
 }

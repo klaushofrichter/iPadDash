@@ -7,6 +7,9 @@ final class AboutViewController: UIViewController {
     private let themeControl = UISegmentedControl(items: ["Light", "Dark"])
     private let autoMoveControl = UISegmentedControl(
         items: Settings.autoMoveIntervals.map { $0 == 0 ? "None" : intervalText($0) })
+    private let ambientControl = UISegmentedControl(
+        items: Settings.ambientIntervals.map { $0 == 0 ? "Off" : intervalText($0) })
+    private let ambientStatus = SpacedLabel(font: font(14), alpha: 0.6)
 
     override var prefersStatusBarHidden: Bool { return true }
 
@@ -30,6 +33,9 @@ final class AboutViewController: UIViewController {
         intervalControl.addTarget(self, action: #selector(intervalChanged), for: .valueChanged)
         autoMoveControl.selectedSegmentIndex = Settings.autoMoveIntervals.firstIndex(of: Settings.autoMoveInterval) ?? 0
         autoMoveControl.addTarget(self, action: #selector(autoMoveChanged), for: .valueChanged)
+        ambientControl.selectedSegmentIndex = Settings.ambientIntervals.firstIndex(of: Settings.ambientInterval) ?? 2
+        ambientControl.addTarget(self, action: #selector(ambientChanged), for: .valueChanged)
+        ambientStatus.textAlignment = .left
         themeControl.selectedSegmentIndex = Theme.isDark ? 1 : 0
         themeControl.addTarget(self, action: #selector(themeChanged), for: .valueChanged)
 
@@ -46,6 +52,9 @@ final class AboutViewController: UIViewController {
             section("Auto-move", control: autoMoveControl,
                     note: "Fades to the next page on its own. A swipe restarts the countdown."),
             section("Theme", control: themeControl, note: "Long press on a page also switches."),
+            section("Ambient light", control: ambientControl,
+                    note: "Briefly uses the front camera to measure the room and dims the screen and background to match. No images are kept.",
+                    extra: ambientStatus),
             section("Data source", lines: ["steps.skylar.technology  ·  token \(tokenStatus)",
                                            "Design: klaushofrichter/trmnl-for-steps"]),
             section("Gestures", lines: ["Tap: reload the page",
@@ -55,7 +64,7 @@ final class AboutViewController: UIViewController {
         ])
         stack.axis = .vertical
         stack.alignment = .fill
-        stack.spacing = 36
+        stack.spacing = 28
         stack.setCustomSpacing(8, after: title)
 
         for v in [stack, done] as [UIView] {
@@ -76,13 +85,16 @@ final class AboutViewController: UIViewController {
         view.addGestureRecognizer(swipeUp)
         NotificationCenter.default.addObserver(self, selector: #selector(restyle),
                                                name: Theme.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateAmbientStatus),
+                                               name: AmbientLight.didUpdate, object: nil)
+        updateAmbientStatus()
         restyle()
     }
 
     private var doneButton: UIButton?
 
     private func section(_ heading: String, control: UIView? = nil, note: String? = nil,
-                         lines: [String] = []) -> UIView {
+                         lines: [String] = [], extra: UIView? = nil) -> UIView {
         let headingLabel = SpacedLabel(font: font(14, .bold), kern: 1, uppercase: true, alpha: 0.6)
         headingLabel.textAlignment = .left
         headingLabel.set(heading)
@@ -99,6 +111,7 @@ final class AboutViewController: UIViewController {
             label.set(text)
             views.append(label)
         }
+        if let extra = extra { views.append(extra) }
         let stack = UIStackView(arrangedSubviews: views)
         stack.axis = .vertical
         stack.spacing = 10
@@ -111,6 +124,28 @@ final class AboutViewController: UIViewController {
 
     @objc private func autoMoveChanged() {
         Settings.autoMoveInterval = Settings.autoMoveIntervals[autoMoveControl.selectedSegmentIndex]
+    }
+
+    @objc private func ambientChanged() {
+        Settings.ambientInterval = Settings.ambientIntervals[ambientControl.selectedSegmentIndex]
+        AmbientLight.shared.start()
+        updateAmbientStatus()
+    }
+
+    @objc private func updateAmbientStatus() {
+        let ambient = AmbientLight.shared
+        let text: String
+        if !ambient.isOn {
+            text = "Off: full brightness colors; screen brightness left to iOS."
+        } else if let reason = ambient.unavailableReason {
+            text = "Not measuring: \(reason)"
+        } else if let lux = ambient.lastLux, let date = ambient.lastReading {
+            let time = DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
+            text = "Last reading \(Int(lux.rounded())) lux at \(time) · level \(Int((ambient.level * 100).rounded()))%"
+        } else {
+            text = "Waiting for the first reading…"
+        }
+        ambientStatus.set(text)
     }
 
     @objc private func themeChanged() {

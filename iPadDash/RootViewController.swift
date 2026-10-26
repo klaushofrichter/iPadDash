@@ -70,6 +70,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         NotificationCenter.default.addObserver(self, selector: #selector(restartAutoMove),
                                                name: Settings.didChange, object: nil)
         applyTheme(to: view)
+        AmbientLight.shared.start()
     }
 
     // The About page is full screen, so these also pause auto-move while it is open.
@@ -113,7 +114,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         view.insertSubview(snapshot, aboveSubview: pager.view)
         pager.setViewControllers([pages[next]], direction: .forward, animated: false)
         dots.currentPage = next
-        UIView.animate(withDuration: 0.8, delay: 0, options: .curveEaseInOut, animations: {
+        UIView.animate(withDuration: 1.6, delay: 0, options: .curveEaseInOut, animations: {
             snapshot.alpha = 0
         }, completion: { _ in
             snapshot.removeFromSuperview()

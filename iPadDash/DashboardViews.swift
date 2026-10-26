@@ -8,8 +8,14 @@ import UIKit
 let scale: CGFloat = 0.96
 
 // Light-gray ink rather than white keeps the dark theme easy on the eyes at night.
-var ink: UIColor { return Theme.isDark ? UIColor(white: 0.82, alpha: 1) : .black }
-var paper: UIColor { return Theme.isDark ? .black : .white }
+// In a dim room (ambient level < 1) the light theme's paper goes from white
+// toward darker grey, and the dark theme's ink dims.
+var ink: UIColor {
+    return Theme.isDark ? UIColor(white: 0.45 + 0.37 * AmbientLight.shared.level, alpha: 1) : .black
+}
+var paper: UIColor {
+    return Theme.isDark ? .black : UIColor(white: 0.45 + 0.55 * AmbientLight.shared.level, alpha: 1)
+}
 
 /// Re-applies the current theme to a view tree: label colors, drawn views, ink fills.
 func applyTheme(to view: UIView) {
