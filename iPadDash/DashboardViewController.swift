@@ -1,0 +1,156 @@
+import UIKit
+
+/// The "Steps & Claude" dashboard: steps panel | divider | Claude panel, title bar below.
+final class DashboardViewController: UIViewController {
+    // steps-service allows 40 requests / 5 min per token, shared with TRMNL.
+    private let fetchInterval: TimeInterval = 60
+    // Pace depends on the clock, so re-evaluate between fetches too.
+    private let redrawInterval: TimeInterval = 30
+
+    private let service = StepsService()
+    private var stepsReading: StepsReading?
+    private var claudeReading: ClaudeReading?
+    private var stepsError: Error?
+    private var claudeError: Error?
+    private var lastFetch: Date?
+    private var fetchTimer: Timer?
+    private var redrawTimer: Timer?
+
+    private let stepsPanel = StepsPanelView()
+    private let claudePanel = ClaudePanelView()
+    private let titleLabel = SpacedLabel(font: font(16, .bold))
+    private let instanceLabel = SpacedLabel(font: font(16))
+    private let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
+    override var prefersStatusBarHidden: Bool { return true }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .landscape }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = paper
+
+        let divider = UIView()
+        divider.backgroundColor = ink
+        let columns = UIStackView(arrangedSubviews: [stepsPanel, divider, claudePanel])
+        columns.alignment = .fill
+        divider.widthAnchor.constraint(equalToConstant: 2).isActive = true
+        stepsPanel.widthAnchor.constraint(equalTo: claudePanel.widthAnchor).isActive = true
+
+        // TRMNL's title bar: plugin name on the left, last update on the right.
+        let titleBar = UIStackView(arrangedSubviews: [titleLabel, instanceLabel])
+        titleLabel.textAlignment = .left
+        instanceLabel.textAlignment = .right
+        titleLabel.set("Steps & Claude")
+        let rule = UIView()
+        rule.backgroundColor = ink
+
+        for v in [columns, rule, titleBar] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(v)
+        }
+        let guide = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            columns.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
+            columns.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
+            columns.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
+            rule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
+            rule.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
+            rule.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
+            rule.heightAnchor.constraint(equalToConstant: 2),
+            titleBar.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 8),
+            titleBar.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
+            titleBar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
+            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -12),
+        ])
+
+        #if DEBUG
+        // simctl launch ... with SIMCTL_CHILD_IPADDASH_DEMO=1 shows fixed sample data.
+        if ProcessInfo.processInfo.environment["IPADDASH_DEMO"] != nil {
+            let now = Date()
+            stepsReading = StepsReading(timestamp: now.addingTimeInterval(-12 * 60), steps: 6_240)
+            claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-3 * 60), session: 41, weekly: 38,
+                                          sessionReset: now.addingTimeInterval(3 * 3600),
+                                          weeklyReset: now.addingTimeInterval(90 * 3600))
+            lastFetch = now
+            render()
+            return
+        }
+        #endif
+        render()
+        fetch()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        fetchTimer = Timer.scheduledTimer(withTimeInterval: fetchInterval, repeats: true) { [weak self] _ in
+            self?.fetch()
+        }
+        redrawTimer = Timer.scheduledTimer(withTimeInterval: redrawInterval, repeats: true) { [weak self] _ in
+            self?.render()
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        fetchTimer?.invalidate()
+        redrawTimer?.invalidate()
+    }
+
+    private func fetch() {
+        let group = DispatchGroup()
+        group.enter()
+        service.fetchSteps { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let reading): self.stepsReading = reading; self.stepsError = nil
+                case .failure(let error): self.stepsError = error
+                }
+                group.leave()
+            }
+        }
+        group.enter()
+        service.fetchClaude { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let reading): self.claudeReading = reading; self.claudeError = nil
+                case .failure(let error): self.claudeError = error
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            self.lastFetch = Date()
+            self.render()
+        }
+    }
+
+    private func render() {
+        let now = Date()
+        // Keep showing the last good reading on a failed fetch; its freshness line ages on its own.
+        if let reading = stepsReading {
+            stepsPanel.configure(with: StepsSummary(reading: reading, now: now))
+        } else {
+            stepsPanel.showError(stepsError.map(errorText) ?? "loading…")
+        }
+        if let reading = claudeReading {
+            claudePanel.configure(with: ClaudeSummary(reading: reading, now: now))
+        } else {
+            claudePanel.showError(claudeError.map(errorText) ?? "loading…")
+        }
+
+        var instance = lastFetch.map { "updated \(timeFormatter.string(from: $0))" } ?? ""
+        if let error = stepsError ?? claudeError, stepsReading != nil || claudeReading != nil {
+            instance = "fetch failed: \(errorText(error)) · " + instance
+        }
+        instanceLabel.set(instance)
+    }
+
+    private func errorText(_ error: Error) -> String {
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+}
