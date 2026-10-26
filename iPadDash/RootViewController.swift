@@ -5,6 +5,7 @@ import UIKit
 ///   tap               reload everything on the current page
 ///   long press        switch between light and dark
 ///   swipe down        About page (settings)
+/// With auto-move on, it also cross-fades to the next page every N seconds.
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
@@ -12,6 +13,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private let dots = UIPageControl()
     private let slideFromTop = SlideFromTopTransition()
+    private var autoMoveTimer: Timer?
 
     override var prefersStatusBarHidden: Bool { return true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
@@ -52,7 +54,51 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         }
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged),
                                                name: Theme.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(restartAutoMove),
+                                               name: Settings.didChange, object: nil)
         applyTheme(to: view)
+    }
+
+    // The About page is full screen, so these also pause auto-move while it is open.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        restartAutoMove()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        autoMoveTimer?.invalidate()
+        autoMoveTimer = nil
+    }
+
+    // MARK: - Auto-move
+
+    @objc private func restartAutoMove() {
+        autoMoveTimer?.invalidate()
+        autoMoveTimer = nil
+        let interval = Settings.autoMoveInterval
+        guard interval > 0, pages.count > 1, view.window != nil, presentedViewController == nil else { return }
+        autoMoveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.fadeToNextPage()
+        }
+    }
+
+    /// Cross-fade: freeze the current page in a snapshot, switch pages underneath
+    /// without animation, then fade the snapshot out.
+    private func fadeToNextPage() {
+        guard let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current),
+              let snapshot = pager.view.snapshotView(afterScreenUpdates: false) else { return }
+        let next = (index + 1) % pages.count
+        snapshot.frame = pager.view.frame
+        snapshot.isUserInteractionEnabled = false
+        view.insertSubview(snapshot, aboveSubview: pager.view)
+        pager.setViewControllers([pages[next]], direction: .forward, animated: false)
+        dots.currentPage = next
+        UIView.animate(withDuration: 0.8, delay: 0, options: .curveEaseInOut, animations: {
+            snapshot.alpha = 0
+        }, completion: { _ in
+            snapshot.removeFromSuperview()
+        })
     }
 
     // Off-screen pages aren't in the view tree, so theme them explicitly.
@@ -105,5 +151,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         if let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current) {
             dots.currentPage = index
         }
+        if completed { restartAutoMove() }   // a manual swipe restarts the countdown
     }
 }

@@ -36,6 +36,23 @@ enum Settings {
     }
 }
 
+extension Settings {
+    /// Automatic page advance ("auto-move"), in seconds; 0 means none.
+    static let autoMoveIntervals: [TimeInterval] = [0, 15, 30, 60]
+    private static let autoMoveKey = "autoMoveInterval"
+
+    static var autoMoveInterval: TimeInterval {
+        get {
+            let stored = UserDefaults.standard.double(forKey: autoMoveKey)
+            return autoMoveIntervals.contains(stored) ? stored : 0
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: autoMoveKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
+    }
+}
+
 func intervalText(_ seconds: TimeInterval) -> String {
     return seconds < 60 ? "\(Int(seconds)) s" : "\(Int(seconds / 60)) min"
 }

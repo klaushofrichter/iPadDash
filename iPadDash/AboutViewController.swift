@@ -5,6 +5,8 @@ import UIKit
 final class AboutViewController: UIViewController {
     private let intervalControl = UISegmentedControl(items: Settings.refreshIntervals.map(intervalText))
     private let themeControl = UISegmentedControl(items: ["Light", "Dark"])
+    private let autoMoveControl = UISegmentedControl(
+        items: Settings.autoMoveIntervals.map { $0 == 0 ? "None" : intervalText($0) })
 
     override var prefersStatusBarHidden: Bool { return true }
 
@@ -26,6 +28,8 @@ final class AboutViewController: UIViewController {
 
         intervalControl.selectedSegmentIndex = Settings.refreshIntervals.firstIndex(of: Settings.refreshInterval) ?? 1
         intervalControl.addTarget(self, action: #selector(intervalChanged), for: .valueChanged)
+        autoMoveControl.selectedSegmentIndex = Settings.autoMoveIntervals.firstIndex(of: Settings.autoMoveInterval) ?? 0
+        autoMoveControl.addTarget(self, action: #selector(autoMoveChanged), for: .valueChanged)
         themeControl.selectedSegmentIndex = Theme.isDark ? 1 : 0
         themeControl.addTarget(self, action: #selector(themeChanged), for: .valueChanged)
 
@@ -39,6 +43,8 @@ final class AboutViewController: UIViewController {
             title, appLine,
             section("Background update interval", control: intervalControl,
                     note: "How often each page fetches new data on its own. A tap on a page always reloads immediately."),
+            section("Auto-move", control: autoMoveControl,
+                    note: "Fades to the next page on its own. A swipe restarts the countdown."),
             section("Theme", control: themeControl, note: "Long press on a page also switches."),
             section("Data source", lines: ["steps.skylar.technology  ·  token \(tokenStatus)",
                                            "Design: klaushofrichter/trmnl-for-steps"]),
@@ -101,6 +107,10 @@ final class AboutViewController: UIViewController {
 
     @objc private func intervalChanged() {
         Settings.refreshInterval = Settings.refreshIntervals[intervalControl.selectedSegmentIndex]
+    }
+
+    @objc private func autoMoveChanged() {
+        Settings.autoMoveInterval = Settings.autoMoveIntervals[autoMoveControl.selectedSegmentIndex]
     }
 
     @objc private func themeChanged() {
