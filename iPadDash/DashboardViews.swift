@@ -2,19 +2,10 @@ import UIKit
 
 // Views reproducing the TRMNL "Steps & Claude" layout from
 // klaushofrichter/trmnl-for-steps (black on white, e-ink style), plus a dark
-// variant. Sizes are the TRMNL CSS pixel values times `scale` (800x480 -> 1024x768).
+// variant. Sizes are the TRMNL CSS pixel values times `scale`: the 800x480
+// design fills the top half of the portrait screen (768 points wide).
 
-let scale: CGFloat = 1.28
-
-/// App-level light/dark theme; iOS 12 has no system dark mode.
-enum Theme {
-    private static let key = "darkMode"
-
-    static var isDark: Bool {
-        get { return UserDefaults.standard.bool(forKey: key) }
-        set { UserDefaults.standard.set(newValue, forKey: key) }
-    }
-}
+let scale: CGFloat = 0.96
 
 // Light-gray ink rather than white keeps the dark theme easy on the eyes at night.
 var ink: UIColor { return Theme.isDark ? UIColor(white: 0.82, alpha: 1) : .black }
@@ -24,8 +15,59 @@ var paper: UIColor { return Theme.isDark ? .black : .white }
 func applyTheme(to view: UIView) {
     if let label = view as? SpacedLabel { label.refresh() }
     if view is InkView { view.backgroundColor = ink }
+    if view is PaperView { view.backgroundColor = paper }
+    if let control = view as? UISegmentedControl {
+        // iOS 12 draws segments from tintColor; iOS 13+ needs the selected fill and text colors set.
+        control.tintColor = ink
+        if #available(iOS 13.0, *) { control.selectedSegmentTintColor = ink }
+        control.setTitleTextAttributes([.foregroundColor: ink], for: .normal)
+        control.setTitleTextAttributes([.foregroundColor: paper], for: .selected)
+    }
+    if let dots = view as? UIPageControl {
+        dots.currentPageIndicatorTintColor = ink
+        dots.pageIndicatorTintColor = ink.withAlphaComponent(0.25)
+    }
     view.setNeedsDisplay()
     view.subviews.forEach(applyTheme)
+}
+
+/// A page background in the paper color.
+final class PaperView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = paper
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+/// Dashed outline with a centered note, marking screen space reserved for later.
+final class ReservedAreaView: UIView {
+    private let label = SpacedLabel(font: font(14, .bold), kern: 1, uppercase: true, alpha: 0.5)
+
+    init(text: String) {
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        contentMode = .redraw
+        label.set(text)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -32),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerRadius: 12)
+        path.lineWidth = 2
+        path.setLineDash([8, 6], count: 2, phase: 0)
+        ink.withAlphaComponent(0.35).setStroke()
+        path.stroke()
+    }
 }
 
 /// A solid line or divider in the ink color.
@@ -257,15 +299,13 @@ final class StepsPanelView: PanelView {
 
     init() {
         super.init(title: "STEPS")
-        let size = 180 * scale * 1.3   // the iPad has spare height; give the gauge more of it
+        let size = 180 * scale
         gauge.translatesAutoresizingMaskIntoConstraints = false
         let center = UIStackView(arrangedSubviews: [stepsLabel, goalLabel])
         center.axis = .vertical
         center.alignment = .center
         center.translatesAutoresizingMaskIntoConstraints = false
         gauge.addSubview(center)
-        stepsLabel.font = font(28 * 1.3, .bold)
-        goalLabel.font = font(11 * 1.3)
         NSLayoutConstraint.activate([
             gauge.widthAnchor.constraint(equalToConstant: size),
             gauge.heightAnchor.constraint(equalToConstant: size),
@@ -304,7 +344,7 @@ final class ClaudePanelView: PanelView {
             body.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         }
-        body.setCustomSpacing(22 * scale * 1.5, after: weeklyView)
+        body.setCustomSpacing(22 * scale, after: weeklyView)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

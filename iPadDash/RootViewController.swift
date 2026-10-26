@@ -1,0 +1,109 @@
+import UIKit
+
+/// Hosts the dashboard pages and the global gestures:
+///   swipe left/right  next/previous page
+///   tap               reload everything on the current page
+///   long press        switch between light and dark
+///   swipe down        About page (settings)
+final class RootViewController: UIViewController, UIPageViewControllerDataSource,
+    UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
+
+    private let pages: [UIViewController] = [StepsClaudePageViewController(), DemoPageViewController()]
+    private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
+    private let dots = UIPageControl()
+    private let slideFromTop = SlideFromTopTransition()
+
+    override var prefersStatusBarHidden: Bool { return true }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
+
+    override func loadView() {
+        view = PaperView()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        pager.dataSource = self
+        pager.delegate = self
+        pager.setViewControllers([pages[0]], direction: .forward, animated: false)
+        addChild(pager)
+        pager.view.frame = view.bounds
+        pager.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(pager.view)
+        pager.didMove(toParent: self)
+
+        dots.numberOfPages = pages.count
+        dots.isUserInteractionEnabled = false
+        dots.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(dots)
+        NSLayoutConstraint.activate([
+            dots.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            dots.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+        ])
+
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        longPress.minimumPressDuration = 0.6
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+        tap.require(toFail: longPress)
+        let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(showAbout))
+        swipeDown.direction = .down
+        for recognizer in [longPress, tap, swipeDown] as [UIGestureRecognizer] {
+            recognizer.delegate = self
+            view.addGestureRecognizer(recognizer)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(themeChanged),
+                                               name: Theme.didChange, object: nil)
+        applyTheme(to: view)
+    }
+
+    // Off-screen pages aren't in the view tree, so theme them explicitly.
+    @objc private func themeChanged() {
+        applyTheme(to: view)
+        pages.filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }
+    }
+
+    // MARK: - Gestures
+
+    @objc private func tapped() {
+        (pager.viewControllers?.first as? DashboardPage)?.reloadNow()
+    }
+
+    @objc private func longPressed(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        Theme.isDark.toggle()
+    }
+
+    @objc private func showAbout() {
+        guard presentedViewController == nil else { return }
+        let about = AboutViewController()
+        about.modalPresentationStyle = .fullScreen   // iOS 13+ would default to a sheet
+        about.transitioningDelegate = slideFromTop  // pulled down from the top, like the swipe
+        present(about, animated: true)
+    }
+
+    // The page scroll view's pan must not swallow the vertical swipe.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        return true
+    }
+
+    // MARK: - Paging (carousel: the ends wrap around)
+
+    func pageViewController(_ pageViewController: UIPageViewController,
+                            viewControllerBefore viewController: UIViewController) -> UIViewController? {
+        guard pages.count > 1, let index = pages.firstIndex(of: viewController) else { return nil }
+        return pages[(index + pages.count - 1) % pages.count]
+    }
+
+    func pageViewController(_ pageViewController: UIPageViewController,
+                            viewControllerAfter viewController: UIViewController) -> UIViewController? {
+        guard pages.count > 1, let index = pages.firstIndex(of: viewController) else { return nil }
+        return pages[(index + 1) % pages.count]
+    }
+
+    func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool,
+                            previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
+        if let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current) {
+            dots.currentPage = index
+        }
+    }
+}

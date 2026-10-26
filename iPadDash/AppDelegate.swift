@@ -14,7 +14,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
         if #available(iOS 13.0, *) { return true }
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = DashboardViewController()
+        window.rootViewController = RootViewController()
         window.makeKeyAndVisible()
         self.window = window
         return true
@@ -38,7 +38,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = DashboardViewController()
+        window.rootViewController = RootViewController()
         window.makeKeyAndVisible()
         self.window = window
     }

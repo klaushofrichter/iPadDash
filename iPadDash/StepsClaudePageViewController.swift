@@ -1,9 +1,8 @@
 import UIKit
 
-/// The "Steps & Claude" dashboard: steps panel | divider | Claude panel, title bar below.
-final class DashboardViewController: UIViewController {
-    // steps-service allows 40 requests / 5 min per token, shared with TRMNL.
-    private let fetchInterval: TimeInterval = 60
+/// Page 1: the TRMNL "Steps & Claude" design in the top half (steps panel |
+/// divider | Claude panel, title bar below). The bottom half is reserved.
+final class StepsClaudePageViewController: UIViewController, DashboardPage {
     // Pace depends on the clock, so re-evaluate between fetches too.
     private let redrawInterval: TimeInterval = 30
 
@@ -13,8 +12,10 @@ final class DashboardViewController: UIViewController {
     private var stepsError: Error?
     private var claudeError: Error?
     private var lastFetch: Date?
+    private var fetching = false
     private var fetchTimer: Timer?
     private var redrawTimer: Timer?
+    private var demoMode = false
 
     private let stepsPanel = StepsPanelView()
     private let claudePanel = ClaudePanelView()
@@ -27,12 +28,12 @@ final class DashboardViewController: UIViewController {
         return f
     }()
 
-    override var prefersStatusBarHidden: Bool { return true }
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .landscape }
+    override func loadView() {
+        view = PaperView()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = paper
 
         let divider = InkView()
         let columns = UIStackView(arrangedSubviews: [stepsPanel, divider, claudePanel])
@@ -46,8 +47,9 @@ final class DashboardViewController: UIViewController {
         instanceLabel.textAlignment = .right
         titleLabel.set("Steps & Claude")
         let rule = InkView()
+        let reserved = ReservedAreaView(text: "Lower half · reserved")
 
-        for v in [columns, rule, titleBar] as [UIView] {
+        for v in [columns, rule, titleBar, reserved] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -63,37 +65,40 @@ final class DashboardViewController: UIViewController {
             titleBar.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 8),
             titleBar.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
             titleBar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
-            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -12),
+            // The design ends at the middle of the screen.
+            titleBar.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -8),
+            reserved.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 16),
+            reserved.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
+            reserved.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
+            reserved.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -48),
         ])
 
-        // Tap anywhere to switch between light and dark; the choice is remembered.
-        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(toggleTheme)))
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),
+                                               name: Settings.didChange, object: nil)
 
         #if DEBUG
         // simctl launch ... with SIMCTL_CHILD_IPADDASH_DEMO=1 shows fixed sample data.
         if ProcessInfo.processInfo.environment["IPADDASH_DEMO"] != nil {
+            demoMode = true
             let now = Date()
             stepsReading = StepsReading(timestamp: now.addingTimeInterval(-12 * 60), steps: 6_240)
             claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-3 * 60), session: 41, weekly: 38,
                                           sessionReset: now.addingTimeInterval(3 * 3600),
                                           weeklyReset: now.addingTimeInterval(90 * 3600))
             lastFetch = now
-            render()
-            return
         }
         #endif
         render()
-        fetch()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        fetchTimer = Timer.scheduledTimer(withTimeInterval: fetchInterval, repeats: true) { [weak self] _ in
-            self?.fetch()
+        // Catch up after being off screen (another page, the About page) longer than an interval.
+        if lastFetch.map({ Date().timeIntervalSince($0) >= Settings.refreshInterval }) ?? true {
+            fetch()
         }
-        redrawTimer = Timer.scheduledTimer(withTimeInterval: redrawInterval, repeats: true) { [weak self] _ in
-            self?.render()
-        }
+        render()
+        startTimers()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -102,13 +107,30 @@ final class DashboardViewController: UIViewController {
         redrawTimer?.invalidate()
     }
 
-    @objc private func toggleTheme() {
-        Theme.isDark.toggle()
-        view.backgroundColor = paper
-        applyTheme(to: view)
+    func reloadNow() {
+        fetch()
+        startTimers()   // the next automatic update is a full interval from now
+    }
+
+    @objc private func settingsChanged() {
+        if view.window != nil { startTimers() }
+    }
+
+    private func startTimers() {
+        fetchTimer?.invalidate()
+        redrawTimer?.invalidate()
+        fetchTimer = Timer.scheduledTimer(withTimeInterval: Settings.refreshInterval, repeats: true) { [weak self] _ in
+            self?.fetch()
+        }
+        redrawTimer = Timer.scheduledTimer(withTimeInterval: redrawInterval, repeats: true) { [weak self] _ in
+            self?.render()
+        }
     }
 
     private func fetch() {
+        guard !fetching, !demoMode else { return }
+        fetching = true
+        render()
         let group = DispatchGroup()
         group.enter()
         service.fetchSteps { result in
@@ -131,6 +153,7 @@ final class DashboardViewController: UIViewController {
             }
         }
         group.notify(queue: .main) {
+            self.fetching = false
             self.lastFetch = Date()
             self.render()
         }
@@ -151,7 +174,9 @@ final class DashboardViewController: UIViewController {
         }
 
         var instance = lastFetch.map { "updated \(timeFormatter.string(from: $0))" } ?? ""
-        if let error = stepsError ?? claudeError, stepsReading != nil || claudeReading != nil {
+        if fetching {
+            instance = "refreshing…"
+        } else if let error = stepsError ?? claudeError, stepsReading != nil || claudeReading != nil {
             instance = "fetch failed: \(errorText(error)) · " + instance
         }
         instanceLabel.set(instance)
