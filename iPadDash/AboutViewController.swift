@@ -23,6 +23,7 @@ final class AboutViewController: UIViewController {
         let version = info["CFBundleShortVersionString"] as? String ?? "?"
         let build = info["CFBundleVersion"] as? String ?? "?"
         let tokenStatus = StepsService.tokenFromBundle() == nil ? "missing" : "configured"
+        let clusterStatus = ClusterService().hasCredentials ? "configured" : "missing"
 
         let title = SpacedLabel(font: font(32, .bold), kern: 2)
         title.set("ABOUT")
@@ -55,8 +56,9 @@ final class AboutViewController: UIViewController {
             section("Ambient light", control: ambientControl,
                     note: "Briefly uses the front camera to measure the room and dims the screen and background to match. No images are kept.",
                     extra: ambientStatus),
-            section("Data source", lines: ["steps.skylar.technology  ·  token \(tokenStatus)",
-                                           "Design: klaushofrichter/trmnl-for-steps"]),
+            section("Data source", lines: ["Steps & Claude: steps.skylar.technology  ·  token \(tokenStatus)",
+                                           "Design: klaushofrichter/trmnl-for-steps",
+                                           "Cluster: Grafana Cloud (skylar-technology)  ·  token \(clusterStatus)"]),
             section("Gestures", lines: ["Tap: reload the page",
                                         "Long press: light / dark",
                                         "Swipe left / right: switch page",

@@ -126,6 +126,8 @@ final class SpacedLabel: UILabel {
     }
 
     private var rawText = ""
+    /// Red regardless of the enclosing panel (e.g. one failing row).
+    var alert = false { didSet { if alert != oldValue { refresh() } } }
 
     func refresh() { set(rawText) }
 
@@ -134,7 +136,7 @@ final class SpacedLabel: UILabel {
         let shown = uppercase ? text.uppercased() : text
         attributedText = NSAttributedString(string: shown, attributes: [
             .kern: kern,
-            .foregroundColor: inkColor(for: self).withAlphaComponent(alphaOfInk),
+            .foregroundColor: (alert ? alertInk : inkColor(for: self)).withAlphaComponent(alphaOfInk),
             .font: font as Any,
         ])
     }
@@ -186,6 +188,7 @@ final class RingGaugeView: UIView {
 /// Bordered bar with a diagonal-hatch fill (CSS repeating-linear-gradient 135deg).
 final class HatchedBarView: UIView {
     var percent: Double = 0 { didSet { setNeedsDisplay() } }
+    var alert = false { didSet { setNeedsDisplay() } }
     private let lineWidth: CGFloat
     private let gap: CGFloat
     private let fillAlpha: CGFloat
@@ -211,7 +214,7 @@ final class HatchedBarView: UIView {
         outline.addClip()
         let fillWidth = bounds.width * CGFloat(min(max(percent, 0), 100)) / 100
         ctx.clip(to: CGRect(x: 0, y: 0, width: fillWidth, height: bounds.height))
-        let barInk = inkColor(for: self)
+        let barInk = alert ? alertInk : inkColor(for: self)
         ctx.setStrokeColor(barInk.withAlphaComponent(fillAlpha).cgColor)
         // Stripes running bottom-left to top-right; period measured perpendicular to them.
         let period = (lineWidth + gap) * scale * sqrt(2)

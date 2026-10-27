@@ -9,7 +9,7 @@ import UIKit
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
-    private let pages: [UIViewController] = [StepsClaudePageViewController(), DemoPageViewController()]
+    private let pages: [UIViewController] = [StepsClaudePageViewController(), ClusterPageViewController()]
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private let dots = UIPageControl()
     private let slideFromTop = SlideFromTopTransition()
