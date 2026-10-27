@@ -9,9 +9,10 @@ import UIKit
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
-    private let pages: [UIViewController] = [StepsClaudePageViewController(), ClusterPageViewController()]
+    private let pages: [UIViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
+                                                     UptimePageViewController()]
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
-    private let dots = UIPageControl()
+    private let dots = PageDotsView()
     private let slideFromTop = SlideFromTopTransition()
     private var autoMoveTimer: Timer?
     private let countdown = CountdownView()
@@ -35,7 +36,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
         // Footer strip below the pages: page dots centered, auto-move countdown at the right.
         dots.numberOfPages = pages.count
-        dots.isUserInteractionEnabled = false
 
         for v in [pager.view!, dots, countdown] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -69,6 +69,12 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                                                name: Theme.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(restartAutoMove),
                                                name: Settings.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateDotAlerts),
+                                               name: pageAlertDidChange, object: nil)
+        // Load every page now so all of them fetch in the background and can flag
+        // red markup on their dot before they are first shown.
+        pages.forEach { _ = $0.view }
+        updateDotAlerts()
         applyTheme(to: view)
         AmbientLight.shared.start()
     }
@@ -119,6 +125,10 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         }, completion: { _ in
             snapshot.removeFromSuperview()
         })
+    }
+
+    @objc private func updateDotAlerts() {
+        dots.alerts = pages.map { ($0 as? DashboardPage)?.hasAlert ?? false }
     }
 
     // Off-screen pages aren't in the view tree, so theme them explicitly.

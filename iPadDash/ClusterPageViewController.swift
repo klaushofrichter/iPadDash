@@ -9,6 +9,7 @@ final class ClusterPageViewController: UIViewController, DashboardPage {
     private var lastFetch: Date?
     private var fetching = false
     private var timer: Timer?
+    private(set) var hasAlert = false
 
     private let loadPanel = LoadPanelView()
     private let servicesPanel = ServicesPanelView()
@@ -85,6 +86,9 @@ final class ClusterPageViewController: UIViewController, DashboardPage {
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),
                                                name: Settings.didChange, object: nil)
         render()
+        // Start right away, even before the page is shown, so its dot can turn red.
+        fetch()
+        startTimer()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -95,18 +99,13 @@ final class ClusterPageViewController: UIViewController, DashboardPage {
         startTimer()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        timer?.invalidate()
-    }
-
     func reloadNow() {
         fetch()
         startTimer()
     }
 
     @objc private func settingsChanged() {
-        if view.window != nil { startTimer() }
+        startTimer()
     }
 
     private func startTimer() {
@@ -170,6 +169,11 @@ final class ClusterPageViewController: UIViewController, DashboardPage {
         }
         instanceLabel.set(instance)
         instanceLabel.alert = lastError != nil
+        let alert = snapshot?.needsAttention ?? false || lastError != nil
+        if alert != hasAlert {
+            hasAlert = alert
+            postPageAlertChange()
+        }
     }
 
     private func errorText(_ error: Error) -> String {

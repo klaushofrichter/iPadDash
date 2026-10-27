@@ -24,6 +24,7 @@ final class AboutViewController: UIViewController {
         let build = info["CFBundleVersion"] as? String ?? "?"
         let tokenStatus = StepsService.tokenFromBundle() == nil ? "missing" : "configured"
         let clusterStatus = ClusterService().hasCredentials ? "configured" : "missing"
+        let uptimeStatus = UptimeService().hasKey ? "configured" : "missing"
 
         let title = SpacedLabel(font: font(32, .bold), kern: 2)
         title.set("ABOUT")
@@ -58,7 +59,8 @@ final class AboutViewController: UIViewController {
                     extra: ambientStatus),
             section("Data source", lines: ["Steps & Claude: steps.skylar.technology  ·  token \(tokenStatus)",
                                            "Design: klaushofrichter/trmnl-for-steps",
-                                           "Cluster: Grafana Cloud (skylar-technology)  ·  token \(clusterStatus)"]),
+                                           "Cluster: Grafana Cloud (skylar-technology)  ·  token \(clusterStatus)",
+                                           "Uptime: UptimeRobot  ·  key \(uptimeStatus)"]),
             section("Gestures", lines: ["Tap: reload the page",
                                         "Long press: light / dark",
                                         "Swipe left / right: switch page",

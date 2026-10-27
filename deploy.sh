@@ -23,12 +23,14 @@ DERIVED=build
 APP="$DERIVED/Build/Products/$CONFIG-iphoneos/iPadDash.app"
 
 # Credentials live in .env: STEPS_ACCESS_TOKEN for steps-service, and
-# GRAFANA_PROM_USER / GRAFANA_PROM_TOKEN (read-only metrics) for the cluster page.
+# GRAFANA_PROM_USER / GRAFANA_PROM_TOKEN (read-only metrics) for the cluster page,
+# UPTIMEROBOT_API_KEY (read-only) for the uptime page.
 # The app reads them from the bundled Secrets.plist. Both files are git-ignored.
 if [ -f .env ]; then
     STEPS_ACCESS_TOKEN=$(sed -n 's/^STEPS_ACCESS_TOKEN=//p' .env | tr -d '"'"'"' \r')
     GRAFANA_PROM_USER=$(sed -n 's/^GRAFANA_PROM_USER=//p' .env | tr -d '"'"'"' \r')
     GRAFANA_PROM_TOKEN=$(sed -n 's/^GRAFANA_PROM_TOKEN=//p' .env | tr -d '"'"'"' \r')
+    UPTIMEROBOT_API_KEY=$(sed -n 's/^UPTIMEROBOT_API_KEY=//p' .env | tr -d '"'"'"' \r')
 fi
 cat > iPadDash/Secrets.plist <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -42,6 +44,8 @@ cat > iPadDash/Secrets.plist <<EOF
 	<string>${GRAFANA_PROM_USER:-}</string>
 	<key>GrafanaToken</key>
 	<string>${GRAFANA_PROM_TOKEN:-}</string>
+	<key>UptimeRobotKey</key>
+	<string>${UPTIMEROBOT_API_KEY:-}</string>
 </dict>
 </plist>
 EOF

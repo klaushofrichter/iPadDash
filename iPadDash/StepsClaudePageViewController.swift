@@ -16,6 +16,7 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
     private var fetchTimer: Timer?
     private var redrawTimer: Timer?
     private var demoMode = false
+    private(set) var hasAlert = false
 
     private let stepsPanel = StepsPanelView()
     private let claudePanel = ClaudePanelView()
@@ -93,6 +94,9 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
         }
         #endif
         render()
+        // Start right away, even before the page is shown, so its dot can turn red.
+        fetch()
+        startTimers()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -105,19 +109,13 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
         startTimers()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        fetchTimer?.invalidate()
-        redrawTimer?.invalidate()
-    }
-
     func reloadNow() {
         fetch()
         startTimers()   // the next automatic update is a full interval from now
     }
 
     @objc private func settingsChanged() {
-        if view.window != nil { startTimers() }
+        startTimers()
     }
 
     private func startTimers() {
@@ -184,6 +182,11 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
             instance = "fetch failed: \(errorText(error)) · " + instance
         }
         instanceLabel.set(instance)
+        let alert = stepsPanel.alerting || claudePanel.alerting
+        if alert != hasAlert {
+            hasAlert = alert
+            postPageAlertChange()
+        }
     }
 
     private func errorText(_ error: Error) -> String {

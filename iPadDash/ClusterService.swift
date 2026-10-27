@@ -43,6 +43,15 @@ struct ClusterSnapshot {
 
     var servicesDown: [ServiceProbe] { return services.filter { !$0.up } }
     var stale: Bool { return (sampleAge ?? .infinity) > ClusterLimits.sampleAge }
+
+    /// Anything the cluster page draws in red (same limits as the page).
+    var needsAttention: Bool {
+        let usage = [cpuPct, memPct, diskPct].compactMap { $0 }.contains { $0 > ClusterLimits.usagePct }
+        let backupLate = backupAge.map { $0 > ClusterLimits.backupAge } ?? true
+        let certSoon = certMinDays.map { $0 < ClusterLimits.certDays } ?? false
+        let cronLate = cronJobs.contains { $0.age > ClusterLimits.cronJobAge }
+        return stale || !servicesDown.isEmpty || usage || backupLate || certSoon || cronLate
+    }
 }
 
 enum GrafanaError: LocalizedError {

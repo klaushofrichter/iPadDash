@@ -76,4 +76,15 @@ func intervalText(_ seconds: TimeInterval) -> String {
 protocol DashboardPage: AnyObject {
     /// Fetch fresh data for everything on the page now (tap gesture).
     func reloadNow()
+    /// True while anything on the page is drawn in red (shown on the page dots).
+    var hasAlert: Bool { get }
+}
+
+/// Posted by a page when its `hasAlert` changes.
+let pageAlertDidChange = Notification.Name("PageAlertDidChange")
+
+/// Tells the page dots that some page's `hasAlert` changed. Post only after the
+/// property is assigned: observers read it synchronously.
+func postPageAlertChange() {
+    NotificationCenter.default.post(name: pageAlertDidChange, object: nil)
 }
