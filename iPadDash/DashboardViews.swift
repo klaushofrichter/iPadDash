@@ -17,6 +17,23 @@ var paper: UIColor {
     return Theme.isDark ? .black : UIColor(white: 0.45 + 0.55 * AmbientLight.shared.level, alpha: 1)
 }
 
+/// Ink for panels flagged as alerting (e.g. stale data): a red that reads well
+/// on white, grey and black backgrounds.
+var alertInk: UIColor {
+    return Theme.isDark ? UIColor(red: 1, green: 0.32, blue: 0.29, alpha: 1)
+                        : UIColor(red: 0.84, green: 0.05, blue: 0.05, alpha: 1)
+}
+
+/// The ink a view should draw with: red inside an alerting panel, else the theme ink.
+func inkColor(for view: UIView) -> UIColor {
+    var current: UIView? = view
+    while let v = current {
+        if let panel = v as? PanelView, panel.alerting { return alertInk }
+        current = v.superview
+    }
+    return ink
+}
+
 /// Re-applies the current theme to a view tree: label colors, drawn views, ink fills.
 func applyTheme(to view: UIView) {
     if let label = view as? SpacedLabel { label.refresh() }
@@ -117,7 +134,7 @@ final class SpacedLabel: UILabel {
         let shown = uppercase ? text.uppercased() : text
         attributedText = NSAttributedString(string: shown, attributes: [
             .kern: kern,
-            .foregroundColor: ink.withAlphaComponent(alphaOfInk),
+            .foregroundColor: inkColor(for: self).withAlphaComponent(alphaOfInk),
             .font: font as Any,
         ])
     }
@@ -139,13 +156,14 @@ final class RingGaugeView: UIView {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let unit = min(bounds.width, bounds.height) / 100
+        let ringInk = inkColor(for: self)
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
 
         func ring(radius: CGFloat, width: CGFloat, fraction: CGFloat, minLength: CGFloat) {
             let r = radius * unit
             ctx.setLineWidth(width * unit)
             ctx.setLineCap(.butt)
-            ctx.setStrokeColor(ink.withAlphaComponent(0.15).cgColor)
+            ctx.setStrokeColor(ringInk.withAlphaComponent(0.15).cgColor)
             ctx.addArc(center: center, radius: r, startAngle: 0, endAngle: 2 * .pi, clockwise: false)
             ctx.strokePath()
 
@@ -154,7 +172,7 @@ final class RingGaugeView: UIView {
             let circumference = 2 * .pi * radius
             let length = max(circumference * fraction, minLength)
             let start = -CGFloat.pi / 2
-            ctx.setStrokeColor(ink.cgColor)
+            ctx.setStrokeColor(ringInk.cgColor)
             ctx.addArc(center: center, radius: r, startAngle: start,
                        endAngle: start + 2 * .pi * min(length / circumference, 1), clockwise: false)
             ctx.strokePath()
@@ -193,7 +211,8 @@ final class HatchedBarView: UIView {
         outline.addClip()
         let fillWidth = bounds.width * CGFloat(min(max(percent, 0), 100)) / 100
         ctx.clip(to: CGRect(x: 0, y: 0, width: fillWidth, height: bounds.height))
-        ctx.setStrokeColor(ink.withAlphaComponent(fillAlpha).cgColor)
+        let barInk = inkColor(for: self)
+        ctx.setStrokeColor(barInk.withAlphaComponent(fillAlpha).cgColor)
         // Stripes running bottom-left to top-right; period measured perpendicular to them.
         let period = (lineWidth + gap) * scale * sqrt(2)
         ctx.setLineWidth(lineWidth * scale)
@@ -206,7 +225,7 @@ final class HatchedBarView: UIView {
         ctx.strokePath()
         ctx.restoreGState()
 
-        ctx.setStrokeColor(ink.cgColor)
+        ctx.setStrokeColor(barInk.cgColor)
         ctx.setLineWidth(border)
         ctx.addPath(outline.cgPath)
         ctx.strokePath()
@@ -291,6 +310,11 @@ class PanelView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// Draws everything in the panel in red (see `inkColor(for:)`).
+    var alerting = false {
+        didSet { if alerting != oldValue { applyTheme(to: self) } }
+    }
+
     func showError(_ message: String) {
         heroLabel.set("—")
         freshnessLabel.set(message)
@@ -332,6 +356,7 @@ final class StepsPanelView: PanelView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(with summary: StepsSummary) {
+        alerting = summary.stale
         heroLabel.set(summary.hero)
         stepsLabel.set("\(summary.steps)")
         gauge.pacePct = summary.pacePct
@@ -357,6 +382,7 @@ final class ClaudePanelView: PanelView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(with summary: ClaudeSummary) {
+        alerting = summary.stale
         heroLabel.set(summary.hero)
         weeklyView.configure(with: summary.weekly)
         sessionView.configure(with: summary.session)

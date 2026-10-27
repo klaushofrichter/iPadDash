@@ -18,6 +18,8 @@ struct StepsSummary {
     let status: String
     let hero: String          // "2,800 to go" / "1,200 above"
     let freshness: String
+    /// More than `staleAfter` since the last steps reading: the panel turns red.
+    let stale: Bool
 
     init(reading: StepsReading, now: Date, calendar: Calendar = .current) {
         steps = reading.steps
@@ -42,6 +44,7 @@ struct StepsSummary {
         let rounded = (raw + 99) / 100 * 100   // round up to the nearest 100
         hero = "\(groupedNumber(rounded)) \(remaining > 0 ? "to go" : "above")"
         freshness = freshnessText(since: reading.timestamp, now: now)
+        stale = now.timeIntervalSince(reading.timestamp) > staleAfter
     }
 }
 
@@ -92,6 +95,8 @@ struct ClaudeSummary {
     let session: UsageWindow
     let hero: String
     let freshness: String
+    /// More than `staleAfter` since the last Claude reading: the panel turns red.
+    let stale: Bool
 
     init(reading: ClaudeReading, now: Date) {
         weekly = UsageWindow(name: "Weekly", actual: reading.weekly, reset: reading.weeklyReset,
@@ -106,8 +111,12 @@ struct ClaudeSummary {
             hero = "\(percentText(abs(weekly.delta)))% \(weekly.delta < 0 ? "Underuse" : "Overuse")"
         }
         freshness = freshnessText(since: reading.timestamp, now: now)
+        stale = now.timeIntervalSince(reading.timestamp) > staleAfter
     }
 }
+
+/// A panel whose reading is older than this is drawn in red.
+let staleAfter: TimeInterval = 130 * 60
 
 /// "updated just now" / "updated 12 min ago" / "updated 3 hours ago" / "DATA IS OUTDATED"
 func freshnessText(since timestamp: Date, now: Date) -> String {

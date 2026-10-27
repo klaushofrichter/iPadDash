@@ -81,8 +81,12 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
         if ProcessInfo.processInfo.environment["IPADDASH_DEMO"] != nil {
             demoMode = true
             let now = Date()
-            stepsReading = StepsReading(timestamp: now.addingTimeInterval(-12 * 60), steps: 6_240)
-            claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-3 * 60), session: 41, weekly: 38,
+            // IPADDASH_STEPS_AGE=<minutes> sets how old the steps reading is (default 12).
+            let stepsAge = ProcessInfo.processInfo.environment["IPADDASH_STEPS_AGE"].flatMap(Double.init) ?? 12
+            stepsReading = StepsReading(timestamp: now.addingTimeInterval(-stepsAge * 60), steps: 6_240)
+            // IPADDASH_CLAUDE_AGE=<minutes> sets how old the Claude reading is (default 3).
+            let claudeAge = ProcessInfo.processInfo.environment["IPADDASH_CLAUDE_AGE"].flatMap(Double.init) ?? 3
+            claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-claudeAge * 60), session: 41, weekly: 38,
                                           sessionReset: now.addingTimeInterval(3 * 3600),
                                           weeklyReset: now.addingTimeInterval(90 * 3600))
             lastFetch = now
