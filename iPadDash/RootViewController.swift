@@ -10,7 +10,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
     private let pages: [UIViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
-                                                     UptimePageViewController()]
+                                                     UptimePageViewController(), GitHubPageViewController()]
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private let dots = PageDotsView()
     private let slideFromTop = SlideFromTopTransition()
