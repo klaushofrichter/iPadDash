@@ -6,6 +6,7 @@ import UIKit
 final class GitHubPageViewController: UIViewController, DashboardPage {
     private let fetchInterval: TimeInterval = 3600
     private let staleAfter: TimeInterval = 2 * 3600     // two missed hourly updates
+    private let maxOpenPRs = 5                          // more turns the headline red
     // Text below the subtitle is twice the size of the other pages' detail text.
     private let mergeRowHeight: CGFloat = 92
 
@@ -157,7 +158,13 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         service.fetchSnapshot { result in
             self.fetching = false
             switch result {
-            case .success(let snapshot):
+            case .success(var snapshot):
+                #if DEBUG
+                // IPADDASH_GITHUB_OPEN=<n> pretends n pull requests are open.
+                if let n = ProcessInfo.processInfo.environment["IPADDASH_GITHUB_OPEN"].flatMap(Int.init) {
+                    snapshot.openCount = n
+                }
+                #endif
                 self.snapshot = snapshot
                 self.lastError = nil
                 self.lastFetch = Date()
@@ -211,7 +218,8 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
             repoRows.arrangedSubviews.forEach { $0.isHidden = true }
             mergeRows.arrangedSubviews.forEach { $0.isHidden = true }
         }
-        heroLabel.alert = snapshot == nil && lastError != nil
+        let tooManyOpen = (snapshot?.openCount ?? 0) > maxOpenPRs
+        heroLabel.alert = tooManyOpen || (snapshot == nil && lastError != nil)
 
         // Age of the data in minutes, counted from the last successful fetch.
         let age = lastFetch.map { now.timeIntervalSince($0) }
@@ -225,7 +233,7 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         let stale = (age ?? 0) > staleAfter
         instanceLabel.alert = lastError != nil || stale
 
-        let alert = lastError != nil || stale
+        let alert = lastError != nil || stale || tooManyOpen
         if alert != hasAlert {
             hasAlert = alert
             postPageAlertChange()
