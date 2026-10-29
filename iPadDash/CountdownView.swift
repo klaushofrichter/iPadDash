@@ -3,10 +3,13 @@ import UIKit
 /// Small pie showing time until the next auto-move. Cycles alternate: the pie
 /// shrinks from full to empty, then grows from empty back to full, and so on.
 /// A reset always starts full. Animated by Core Animation, so it is smooth and cheap.
+/// While the page is frozen it is red and shrinks once over the freeze time.
 final class CountdownView: UIView {
     private let track = CAShapeLayer()
     private let pie = CAShapeLayer()
     private var shrinking = true
+    /// Page frozen (swipe up): drawn in red.
+    var frozen = false { didSet { if frozen != oldValue { applyColors() } } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -40,15 +43,16 @@ final class CountdownView: UIView {
     func applyColors() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        track.strokeColor = ink.withAlphaComponent(0.35).cgColor
-        pie.strokeColor = ink.cgColor
+        let color = frozen ? alertInk : ink
+        track.strokeColor = color.withAlphaComponent(0.35).cgColor
+        pie.strokeColor = color.cgColor
         CATransaction.commit()
     }
 
-    /// Start over from a full pie (timer reset).
-    func restart(interval: TimeInterval) {
+    /// Start over from a full pie (timer reset), or partway in when `elapsed` > 0.
+    func restart(interval: TimeInterval, elapsed: TimeInterval = 0) {
         shrinking = true
-        run(interval)
+        run(interval, elapsed: elapsed)
     }
 
     /// Continue with the next cycle (the page just advanced).
@@ -64,7 +68,8 @@ final class CountdownView: UIView {
 
     /// The moving edge always sweeps clockwise: shrinking advances the slice's
     /// start (eating it from 12 o'clock on), growing advances its end.
-    private func run(_ interval: TimeInterval) {
+    private func run(_ interval: TimeInterval, elapsed: TimeInterval = 0) {
+        let done = min(max(elapsed / interval, 0), 1)
         isHidden = false
         let keyPath = shrinking ? "strokeStart" : "strokeEnd"
         pie.removeAllAnimations()
@@ -74,9 +79,9 @@ final class CountdownView: UIView {
         pie.strokeEnd = 1
         CATransaction.commit()
         let animation = CABasicAnimation(keyPath: keyPath)
-        animation.fromValue = 0
+        animation.fromValue = done
         animation.toValue = 1
-        animation.duration = interval
+        animation.duration = interval * (1 - done)
         animation.timingFunction = CAMediaTimingFunction(name: .linear)
         pie.add(animation, forKey: "countdown")
     }

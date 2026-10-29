@@ -5,7 +5,10 @@ import UIKit
 ///   tap               reload everything on the current page
 ///   long press        switch between light and dark
 ///   swipe down        About page (settings)
+///   swipe up          freeze the current page for 15 minutes (again: unfreeze)
 /// With auto-move on, it also cross-fades to the next page every N seconds.
+/// A frozen page doesn't auto-move and reloads every minute; the countdown turns
+/// red and runs over the freeze. Swiping to another page also unfreezes.
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
@@ -17,6 +20,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private var autoMoveTimer: Timer?
     private let countdown = CountdownView()
     private let footerHeight: CGFloat = 36
+    private let freezeDuration: TimeInterval = 15 * 60
+    private let frozenReloadInterval: TimeInterval = 60
+    /// Set while the current page is frozen; kept by wall clock across the About page.
+    private var frozenUntil: Date?
+    private var frozenReloadTimer: Timer?
 
     override var prefersStatusBarHidden: Bool { return true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
@@ -61,7 +69,9 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         tap.require(toFail: longPress)
         let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(showAbout))
         swipeDown.direction = .down
-        for recognizer in [longPress, tap, swipeDown] as [UIGestureRecognizer] {
+        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(toggleFreeze))
+        swipeUp.direction = .up
+        for recognizer in [longPress, tap, swipeDown, swipeUp] as [UIGestureRecognizer] {
             recognizer.delegate = self
             view.addGestureRecognizer(recognizer)
         }
@@ -89,6 +99,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         super.viewWillDisappear(animated)
         autoMoveTimer?.invalidate()
         autoMoveTimer = nil
+        frozenReloadTimer?.invalidate()
+        frozenReloadTimer = nil
         countdown.stop()
     }
 
@@ -96,10 +108,30 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     /// Starts the countdown over (full circle). Called on appear, on settings
     /// changes and after a manual swipe; the auto-move setting itself is kept.
+    /// While frozen, it runs the rest of the freeze instead.
     @objc private func restartAutoMove() {
         autoMoveTimer?.invalidate()
         autoMoveTimer = nil
+        frozenReloadTimer?.invalidate()
+        frozenReloadTimer = nil
         countdown.stop()
+        guard view.window != nil, presentedViewController == nil else { return }
+
+        if let until = frozenUntil, until > Date() {
+            let remaining = until.timeIntervalSinceNow
+            countdown.frozen = true
+            countdown.restart(interval: freezeDuration, elapsed: freezeDuration - remaining)
+            autoMoveTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+                self?.frozenUntil = nil
+                self?.restartAutoMove()   // back to the normal cycle, starting full
+            }
+            frozenReloadTimer = Timer.scheduledTimer(withTimeInterval: frozenReloadInterval, repeats: true) { [weak self] _ in
+                self?.tapped()
+            }
+            return
+        }
+        frozenUntil = nil
+        countdown.frozen = false
         let interval = Settings.autoMoveInterval
         guard interval > 0, pages.count > 1, view.window != nil, presentedViewController == nil else { return }
         countdown.restart(interval: interval)
@@ -138,6 +170,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     }
 
     // MARK: - Gestures
+
+    @objc private func toggleFreeze() {
+        frozenUntil = frozenUntil == nil ? Date().addingTimeInterval(freezeDuration) : nil
+        restartAutoMove()
+    }
 
     @objc private func tapped() {
         (pager.viewControllers?.first as? DashboardPage)?.reloadNow()
@@ -181,6 +218,9 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         if let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current) {
             dots.currentPage = index
         }
-        if completed { restartAutoMove() }   // a manual swipe restarts the countdown
+        if completed {   // a manual swipe unfreezes and restarts the countdown
+            frozenUntil = nil
+            restartAutoMove()
+        }
     }
 }

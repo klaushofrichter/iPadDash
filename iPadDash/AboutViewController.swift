@@ -66,6 +66,7 @@ final class AboutViewController: UIViewController {
             section("Gestures", lines: ["Tap: reload the page",
                                         "Long press: light / dark",
                                         "Swipe left / right: switch page",
+                                        "Swipe up on a page: freeze it for 15 min (red countdown, reloads every minute); again to unfreeze",
                                         "Swipe down: this page  ·  swipe up: close"]),
         ])
         stack.axis = .vertical
