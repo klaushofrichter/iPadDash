@@ -8,7 +8,7 @@
 # bundle, and installs it with libimobiledevice (Xcode 27 can't deploy to iOS 12).
 #
 # Usage:
-#   ./deploy.sh            build, patch, sign, install
+#   ./deploy.sh            build, patch, sign, install, launch
 #   ./deploy.sh --check    unsigned build + checks only (no iPad or Apple ID needed)
 #
 # Requires: STEPS_ACCESS_TOKEN (and for the cluster page GRAFANA_PROM_USER and
@@ -87,3 +87,20 @@ rm -rf "$DERIVED/ipa" && mkdir -p "$DERIVED/ipa/Payload"
 cp -R "$APP" "$DERIVED/ipa/Payload/"
 (cd "$DERIVED/ipa" && zip -qr ../iPadDash.ipa Payload)
 ideviceinstaller install "$DERIVED/iPadDash.ipa"
+
+# Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
+# no longer ships: 12.4.zip from github.com/filsv/iOSDeviceSupport, unpacked
+# into $DDI_DIR (the iPad checks Apple's signature when mounting). The image
+# stays mounted until the iPad reboots.
+DDI_DIR=${DDI_DIR:-$HOME/Library/Developer/iPadDash-DDI/12.4}
+if ! ideviceimagemounter list 2>/dev/null | grep -q ImageSignature; then
+    if [ -f "$DDI_DIR/DeveloperDiskImage.dmg" ]; then
+        ideviceimagemounter mount "$DDI_DIR/DeveloperDiskImage.dmg" \
+            "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
+    else
+        echo "Installed; not launched: no developer disk image in $DDI_DIR"
+        exit 0
+    fi
+fi
+bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
+idevicedebug --detach run "$bundle_id" && echo "Launched $bundle_id"
