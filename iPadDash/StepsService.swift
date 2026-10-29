@@ -21,13 +21,16 @@ struct ClaudeReading {
 
 enum StepsServiceError: LocalizedError {
     case missingToken
-    case http(Int)
+    case http(Int, String?)     // status and the service's {"error": ...} message
     case badResponse
 
     var errorDescription: String? {
         switch self {
         case .missingToken: return "no token in Secrets.plist"
-        case .http(let code): return "HTTP \(code)"
+        // The service keeps its data in memory: after a restart it answers 404
+        // ("no steps data has been submitted yet") until the next reading arrives.
+        case .http(404, _): return "no data yet"
+        case .http(let code, let message): return message ?? "HTTP \(code)"
         case .badResponse: return "unexpected response"
         }
     }
@@ -91,7 +94,8 @@ final class StepsService {
                 return
             }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                completion(.failure(StepsServiceError.http(http.statusCode)))
+                let body = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+                completion(.failure(StepsServiceError.http(http.statusCode, body?["error"] as? String)))
                 return
             }
             guard let data = data,
