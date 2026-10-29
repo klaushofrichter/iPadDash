@@ -3,13 +3,15 @@ import Foundation
 // Pull request activity across the repositories owned by klaushofrichter, via
 // GitHub's search API and a fine-grained token (Pull requests: read-only on all
 // repositories). Each refresh is three searches: open PRs, merged in the last
-// 24 h (count only), and merged in the last 30 days (count and the newest ones).
+// 24 h (count only), and merged in the last 30 days (count and the newest ones,
+// via GraphQL for their target branch).
 
 struct MergedPR {
     let repo: String
     let number: Int
     let title: String
     let mergedAt: Date
+    let base: String            // target branch, e.g. "main" or "production"
 }
 
 struct GitHubSnapshot {
@@ -94,18 +96,27 @@ final class GitHubService {
                perPage: 1) { total, _ in
             snapshot.merged24h = total
         }
+        // GraphQL rather than REST search, so each merge comes with its target branch.
         // Sorted by last update, which for merged PRs is (nearly always) the merge;
         // re-sorted by merge time below.
-        search("is:pr is:merged user:\(owner) merged:>=\(isoDateTime(now.addingTimeInterval(-30 * 86400)))",
-               perPage: 50, sort: "updated") { total, items in
-            snapshot.merged30d = total
-            snapshot.recentMerges = items.compactMap { item -> MergedPR? in
-                guard let pr = item["pull_request"] as? [String: Any],
-                      let merged = (pr["merged_at"] as? String).flatMap(parseISODate),
-                      let number = (item["number"] as? NSNumber)?.intValue else { return nil }
-                return MergedPR(repo: GitHubService.repoName(item), number: number,
-                                title: item["title"] as? String ?? "", mergedAt: merged)
-            }.sorted { $0.mergedAt > $1.mergedAt }
+        group.enter()
+        let query = "is:pr is:merged user:\(owner) merged:>=\(isoDateTime(now.addingTimeInterval(-30 * 86400))) sort:updated-desc"
+        graphQLSearch(query, first: 50) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let (total, nodes)):
+                    snapshot.merged30d = total
+                    snapshot.recentMerges = nodes.compactMap { node -> MergedPR? in
+                        guard let merged = (node["mergedAt"] as? String).flatMap(parseISODate),
+                              let number = (node["number"] as? NSNumber)?.intValue else { return nil }
+                        let repo = (node["repository"] as? [String: Any])?["name"] as? String ?? "?"
+                        return MergedPR(repo: repo, number: number, title: node["title"] as? String ?? "",
+                                        mergedAt: merged, base: node["baseRefName"] as? String ?? "?")
+                    }.sorted { $0.mergedAt > $1.mergedAt }
+                case .failure(let error): firstError = firstError ?? error
+                }
+                group.leave()
+            }
         }
 
         group.notify(queue: .main) {
@@ -119,6 +130,34 @@ final class GitHubService {
 
     private static func repoName(_ item: [String: Any]) -> String {
         return (item["repository_url"] as? String)?.components(separatedBy: "/").last ?? "?"
+    }
+
+    private func graphQLSearch(_ query: String, first: Int,
+                               completion: @escaping (Result<(Int, [[String: Any]]), Error>) -> Void) {
+        let gql = """
+            query($q: String!, $n: Int!) { search(query: $q, type: ISSUE, first: $n) { issueCount
+              nodes { ... on PullRequest { number title mergedAt baseRefName repository { name } } } } }
+            """
+        var request = URLRequest(url: URL(string: "https://api.github.com/graphql")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "query": gql, "variables": ["q": query, "n": first]])
+        session.dataTask(with: request) { data, response, error in
+            if let error = error { return completion(.failure(error)) }
+            let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                return completion(.failure(GitHubError.http(http.statusCode, json?["message"] as? String)))
+            }
+            if let message = (json?["errors"] as? [[String: Any]])?.first?["message"] as? String {
+                return completion(.failure(GitHubError.http(200, message)))
+            }
+            guard let search = (json?["data"] as? [String: Any])?["search"] as? [String: Any],
+                  let total = (search["issueCount"] as? NSNumber)?.intValue else {
+                return completion(.failure(GitHubError.badResponse))
+            }
+            completion(.success((total, search["nodes"] as? [[String: Any]] ?? [])))
+        }.resume()
     }
 
     private func search(_ query: String, perPage: Int, sort: String?,

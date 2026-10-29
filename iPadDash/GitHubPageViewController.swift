@@ -208,7 +208,7 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
                     let pr = s.recentMerges[index]
                     let when = Calendar.current.isDateInToday(pr.mergedAt)
                         ? timeFormatter.string(from: pr.mergedAt) : dayFormatter.string(from: pr.mergedAt)
-                    row.configure(when: when, repo: "\(pr.repo) #\(pr.number)", title: pr.title)
+                    row.configure(when: when, repo: "\(pr.repo) #\(pr.number) → \(pr.base)", title: pr.title)
                 }
             }
         } else {
