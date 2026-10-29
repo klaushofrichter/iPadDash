@@ -24,13 +24,8 @@ var alertInk: UIColor {
                         : UIColor(red: 0.84, green: 0.05, blue: 0.05, alpha: 1)
 }
 
-/// The ink a view should draw with: red inside an alerting panel, else the theme ink.
+/// The ink a view should draw with. Red is set per item (`alert`), never for a whole panel.
 func inkColor(for view: UIView) -> UIColor {
-    var current: UIView? = view
-    while let v = current {
-        if let panel = v as? PanelView, panel.alerting { return alertInk }
-        current = v.superview
-    }
     return ink
 }
 
@@ -272,8 +267,10 @@ final class UsageMetricView: UIView {
     func configure(with window: UsageWindow) {
         nameLabel.set(window.name)
         statusLabel.set(window.status)
+        statusLabel.alert = window.overuse
         paceBar.percent = window.expired ? 0 : Double(window.pace)
         actualBar.percent = window.actual ?? 0
+        actualBar.alert = window.overuse
         captionLabel.set(window.caption)
     }
 }
@@ -313,9 +310,10 @@ class PanelView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Draws everything in the panel in red (see `inkColor(for:)`).
+    /// Stale data: only the freshness line turns red, so the cause is visible;
+    /// the page still counts it as an alert.
     var alerting = false {
-        didSet { if alerting != oldValue { applyTheme(to: self) } }
+        didSet { freshnessLabel.alert = alerting }
     }
 
     func showError(_ message: String) {
@@ -372,6 +370,8 @@ final class StepsPanelView: PanelView {
 final class ClaudePanelView: PanelView {
     private let weeklyView = UsageMetricView()
     private let sessionView = UsageMetricView()
+    /// A window is in Overuse; only its parts are red, but the page counts it as an alert.
+    private(set) var overuse = false
 
     init() {
         super.init(title: "CLAUDE")
@@ -386,7 +386,9 @@ final class ClaudePanelView: PanelView {
 
     func configure(with summary: ClaudeSummary) {
         alerting = summary.stale
+        overuse = summary.weekly.overuse || summary.session.overuse
         heroLabel.set(summary.hero)
+        heroLabel.alert = summary.weekly.overuse   // the hero reports the weekly window
         weeklyView.configure(with: summary.weekly)
         sessionView.configure(with: summary.session)
         freshnessLabel.set(summary.freshness)

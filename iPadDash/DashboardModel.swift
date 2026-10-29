@@ -57,6 +57,8 @@ struct UsageWindow {
     let status: String        // "Overuse" / "Underuse" / "On pace" / "Expired" / "n/a"
 
     var available: Bool { return actual != nil && status != "n/a" }
+    /// Ahead of pace by more than the tolerance: drawn in red.
+    var overuse: Bool { return status == "Overuse" }
 
     init(name: String, actual: Double?, reset: Date?, windowHours: Double, now: Date) {
         self.name = name

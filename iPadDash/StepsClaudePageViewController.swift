@@ -87,7 +87,10 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
             stepsReading = StepsReading(timestamp: now.addingTimeInterval(-stepsAge * 60), steps: 6_240)
             // IPADDASH_CLAUDE_AGE=<minutes> sets how old the Claude reading is (default 3).
             let claudeAge = ProcessInfo.processInfo.environment["IPADDASH_CLAUDE_AGE"].flatMap(Double.init) ?? 3
-            claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-claudeAge * 60), session: 41, weekly: 38,
+            // IPADDASH_CLAUDE_OVERUSE=1 puts both windows well ahead of pace.
+            let overuse = ProcessInfo.processInfo.environment["IPADDASH_CLAUDE_OVERUSE"] != nil
+            claudeReading = ClaudeReading(timestamp: now.addingTimeInterval(-claudeAge * 60),
+                                          session: overuse ? 60 : 41, weekly: overuse ? 55 : 38,
                                           sessionReset: now.addingTimeInterval(3 * 3600),
                                           weeklyReset: now.addingTimeInterval(90 * 3600))
             lastFetch = now
@@ -182,7 +185,7 @@ final class StepsClaudePageViewController: UIViewController, DashboardPage {
             instance = "fetch failed: \(errorText(error)) · " + instance
         }
         instanceLabel.set(instance)
-        let alert = stepsPanel.alerting || claudePanel.alerting
+        let alert = stepsPanel.alerting || claudePanel.alerting || claudePanel.overuse
         if alert != hasAlert {
             hasAlert = alert
             postPageAlertChange()
