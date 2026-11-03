@@ -77,6 +77,14 @@ fi
 echo "Checks passed: minos $minos, MinimumOSVersion $MIN_OS"
 [ "${1:-}" = "--check" ] && exit 0
 
+# Same scheme as the cluster's services: YYYY.MM.DD.N, set at deploy time and not
+# stored in the source (other builds say "dev"). N is the same-day count of earlier
+# releases, and the local v* git tags are the state. Dated in the cluster's zone.
+today=$(TZ=America/Chicago date +%Y.%m.%d)
+tags=$(git tag -l "v$today.*")
+VERSION="$today.$(( $(printf '%s' "$tags" | grep -c '^' || true) + 1 ))"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Info.plist"
+
 # Patching Info.plist invalidated the signature; re-sign with the same identity
 # and entitlements Xcode used.
 identity=$(codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=\(Apple Development.*\)$/\1/p' | head -1)
@@ -87,6 +95,8 @@ rm -rf "$DERIVED/ipa" && mkdir -p "$DERIVED/ipa/Payload"
 cp -R "$APP" "$DERIVED/ipa/Payload/"
 (cd "$DERIVED/ipa" && zip -qr ../iPadDash.ipa Payload)
 ideviceinstaller install "$DERIVED/iPadDash.ipa"
+git tag "v$VERSION"
+echo "Installed version $VERSION"
 
 # Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
 # no longer ships: 12.4.zip from github.com/filsv/iOSDeviceSupport, unpacked

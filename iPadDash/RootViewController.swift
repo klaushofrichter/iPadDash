@@ -6,9 +6,11 @@ import UIKit
 ///   long press        switch between light and dark
 ///   swipe down        About page (settings)
 ///   swipe up          freeze the current page for 15 minutes (again: unfreeze)
-/// With auto-move on, it also cross-fades to the next page every N seconds.
+/// With auto-move on, it also cross-fades to the next page every N seconds; a page
+/// reached by a swipe stays for 2N first, since it is probably of interest.
 /// A frozen page doesn't auto-move and reloads every minute; the countdown turns
 /// red and runs over the freeze. Swiping to another page also unfreezes.
+/// A red banner along the bottom, on every page, reports a lost network.
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
@@ -25,6 +27,13 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     /// Set while the current page is frozen; kept by wall clock across the About page.
     private var frozenUntil: Date?
     private var frozenReloadTimer: Timer?
+    /// The next countdown is for a page the user just swiped to.
+    private var swipedToPage = false
+    private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
+    private let banner = UILabel()
+    private lazy var bannerHeight = banner.heightAnchor.constraint(equalToConstant: 0)
+    private let bannerShownHeight: CGFloat = 44
+    private let offlineAlertAfter: TimeInterval = 20 * 60
 
     override var prefersStatusBarHidden: Bool { return true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
@@ -42,25 +51,39 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         view.addSubview(pager.view)
         pager.didMove(toParent: self)
 
-        // Footer strip below the pages: page dots centered, auto-move countdown at the right.
+        // Footer strip below the pages: date and time at the left, page dots centered,
+        // auto-move countdown at the right.
         dots.numberOfPages = pages.count
 
-        for v in [pager.view!, dots, countdown] {
+        clock.textAlignment = .left
+        banner.textAlignment = .center
+        banner.font = font(20, .bold)
+        banner.clipsToBounds = true
+
+        for v in [pager.view!, clock, dots, countdown, banner] {
             v.translatesAutoresizingMaskIntoConstraints = false
         }
+        view.addSubview(clock)
         view.addSubview(dots)
         view.addSubview(countdown)
+        view.addSubview(banner)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             pager.view.topAnchor.constraint(equalTo: view.topAnchor),
             pager.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             pager.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            pager.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -footerHeight),
+            pager.view.bottomAnchor.constraint(equalTo: banner.topAnchor, constant: -footerHeight),
+            clock.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
+            clock.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
             dots.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            dots.centerYAnchor.constraint(equalTo: guide.bottomAnchor, constant: -footerHeight / 2),
+            dots.centerYAnchor.constraint(equalTo: banner.topAnchor, constant: -footerHeight / 2),
             // Same right margin as the pages' content and rules.
             countdown.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
             countdown.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            bannerHeight,
         ])
 
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
@@ -81,10 +104,23 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                                                name: Settings.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateDotAlerts),
                                                name: pageAlertDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateBanner),
+                                               name: Connectivity.didChange, object: nil)
+        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.updateBanner()
+        }
+        // Fires on the whole second, so the display never lags the real time by much.
+        let tick = Timer(fire: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.up)),
+                         interval: 1, repeats: true) { [weak self] _ in
+            self?.updateClock()
+        }
+        RunLoop.main.add(tick, forMode: .common)
+        updateClock()
         // Load every page now so all of them fetch in the background and can flag
         // red markup on their dot before they are first shown.
         pages.forEach { _ = $0.view }
         updateDotAlerts()
+        updateBanner()
         applyTheme(to: view)
         AmbientLight.shared.start()
     }
@@ -115,6 +151,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         frozenReloadTimer?.invalidate()
         frozenReloadTimer = nil
         countdown.stop()
+        let swiped = swipedToPage
+        swipedToPage = false
         guard view.window != nil, presentedViewController == nil else { return }
 
         if let until = frozenUntil, until > Date() {
@@ -134,10 +172,16 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         countdown.frozen = false
         let interval = Settings.autoMoveInterval
         guard interval > 0, pages.count > 1, view.window != nil, presentedViewController == nil else { return }
-        countdown.restart(interval: interval)
-        autoMoveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let firstDelay = swiped ? 2 * interval : interval
+        countdown.restart(interval: firstDelay)
+        scheduleAutoMove(after: firstDelay, interval: interval)
+    }
+
+    private func scheduleAutoMove(after delay: TimeInterval, interval: TimeInterval) {
+        autoMoveTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.fadeToNextPage()
             self?.countdown.nextCycle(interval: interval)
+            self?.scheduleAutoMove(after: interval, interval: interval)
         }
     }
 
@@ -163,8 +207,24 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         dots.alerts = pages.map { ($0 as? DashboardPage)?.hasAlert ?? false }
     }
 
+    private func updateClock() {
+        clock.set(Settings.clockFormatters[Settings.clockFormat].string(from: Date()))
+    }
+
+    @objc private func updateBanner() {
+        banner.backgroundColor = alertInk
+        banner.textColor = Theme.isDark ? .black : .white
+        guard let offline = Connectivity.shared.offlineDuration(), offline >= offlineAlertAfter else {
+            bannerHeight.constant = 0
+            return
+        }
+        banner.text = "No Network Connectivity for \(durationText(offline))"
+        bannerHeight.constant = bannerShownHeight
+    }
+
     // Off-screen pages aren't in the view tree, so theme them explicitly.
     @objc private func themeChanged() {
+        updateBanner()
         applyTheme(to: view)
         pages.filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }
     }
@@ -218,8 +278,9 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         if let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current) {
             dots.currentPage = index
         }
-        if completed {   // a manual swipe unfreezes and restarts the countdown
+        if completed {   // a manual swipe unfreezes and restarts the countdown, doubled
             frozenUntil = nil
+            swipedToPage = true
             restartAutoMove()
         }
     }

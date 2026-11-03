@@ -88,7 +88,7 @@ final class StepsService {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        session.dataTask(with: request) { data, response, error in
+        session.trackedDataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return

@@ -219,7 +219,7 @@ final class ClusterService {
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         var request = URLRequest(url: components.url!)
         request.setValue(auth, forHTTPHeaderField: "Authorization")
-        session.dataTask(with: request) { data, response, error in
+        session.trackedDataTask(with: request) { data, response, error in
             if let error = error { return completion(.failure(error)) }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
                 return completion(.failure(GrafanaError.http(http.statusCode)))

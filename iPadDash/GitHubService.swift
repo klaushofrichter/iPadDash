@@ -2,7 +2,7 @@ import Foundation
 
 // Pull request activity across the repositories owned by klaushofrichter, via
 // GitHub's search API and a fine-grained token (Pull requests: read-only on all
-// repositories). Each refresh is three searches: open PRs, merged in the last
+// repositories). Each refresh is three searches: open PRs (at least 15 minutes old), merged in the last
 // 24 h (count only), and merged in the last 30 days (count and the newest ones,
 // via GraphQL for their target branch).
 
@@ -13,6 +13,9 @@ struct MergedPR {
     let mergedAt: Date
     let base: String            // target branch, e.g. "main" or "production"
 }
+
+/// Open PRs younger than this are taken to be work in progress and left out.
+private let openPRMinAge: TimeInterval = 15 * 60
 
 struct GitHubSnapshot {
     var openCount = 0
@@ -78,7 +81,8 @@ final class GitHubService {
             }
         }
 
-        search("is:pr is:open archived:false user:\(owner)", perPage: 100) { total, items in
+        search("is:pr is:open archived:false user:\(owner) created:<=\(isoDateTime(now.addingTimeInterval(-openPRMinAge)))",
+               perPage: 100) { total, items in
             snapshot.openCount = total
             var counts: [String: Int] = [:]
             var oldest: [String: Date] = [:]
@@ -143,7 +147,7 @@ final class GitHubService {
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONSerialization.data(withJSONObject: [
             "query": gql, "variables": ["q": query, "n": first]])
-        session.dataTask(with: request) { data, response, error in
+        session.trackedDataTask(with: request) { data, response, error in
             if let error = error { return completion(.failure(error)) }
             let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
@@ -174,7 +178,7 @@ final class GitHubService {
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        session.dataTask(with: request) { data, response, error in
+        session.trackedDataTask(with: request) { data, response, error in
             if let error = error { return completion(.failure(error)) }
             let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {

@@ -34,6 +34,34 @@ enum Settings {
             NotificationCenter.default.post(name: didChange, object: nil)
         }
     }
+
+    /// Choices for the date and time in the page footer; the first is the default.
+    static let clockFormatters: [DateFormatter] = [
+        clockFormatter("EEE MMM d, h:mm a", am: "AM", pm: "PM"),
+        clockFormatter("yyyy-MM-dd hh:mm:ss a", am: "am", pm: "pm"),
+    ]
+    private static let clockFormatKey = "clockFormat"
+
+    static var clockFormat: Int {
+        get {
+            let stored = UserDefaults.standard.integer(forKey: clockFormatKey)
+            return clockFormatters.indices.contains(stored) ? stored : 0
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: clockFormatKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
+    }
+
+    private static func clockFormatter(_ format: String, am: String, pm: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = format
+        f.amSymbol = am
+        f.pmSymbol = pm
+        f.shortWeekdaySymbols = f.shortWeekdaySymbols.map { $0.uppercased() }   // TUE
+        return f
+    }
 }
 
 extension Settings {

@@ -5,6 +5,7 @@ import UIKit
 final class AboutViewController: UIViewController {
     private let intervalControl = UISegmentedControl(items: Settings.refreshIntervals.map(intervalText))
     private let themeControl = UISegmentedControl(items: ["Light", "Dark"])
+    private let clockControl = UISegmentedControl(items: Settings.clockFormatters.map { $0.string(from: Date()) })
     private let autoMoveControl = UISegmentedControl(
         items: Settings.autoMoveIntervals.map { $0 == 0 ? "None" : intervalText($0) })
     private let ambientControl = UISegmentedControl(
@@ -21,7 +22,6 @@ final class AboutViewController: UIViewController {
         super.viewDidLoad()
         let info = Bundle.main.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info["CFBundleVersion"] as? String ?? "?"
         let tokenStatus = StepsService.tokenFromBundle() == nil ? "missing" : "configured"
         let clusterStatus = ClusterService().hasCredentials ? "configured" : "missing"
         let uptimeStatus = UptimeService().hasKey ? "configured" : "missing"
@@ -30,7 +30,7 @@ final class AboutViewController: UIViewController {
         let title = SpacedLabel(font: font(32, .bold), kern: 2)
         title.set("ABOUT")
         let appLine = SpacedLabel(font: font(20))
-        appLine.set("iPadDash \(version) (\(build))")
+        appLine.set("iPadDash \(version)")
 
         intervalControl.selectedSegmentIndex = Settings.refreshIntervals.firstIndex(of: Settings.refreshInterval) ?? 1
         intervalControl.addTarget(self, action: #selector(intervalChanged), for: .valueChanged)
@@ -41,6 +41,8 @@ final class AboutViewController: UIViewController {
         ambientStatus.textAlignment = .left
         themeControl.selectedSegmentIndex = Theme.isDark ? 1 : 0
         themeControl.addTarget(self, action: #selector(themeChanged), for: .valueChanged)
+        clockControl.selectedSegmentIndex = Settings.clockFormat
+        clockControl.addTarget(self, action: #selector(clockChanged), for: .valueChanged)
 
         let done = UIButton(type: .system)
         done.titleLabel?.font = font(20, .bold)
@@ -53,8 +55,10 @@ final class AboutViewController: UIViewController {
             section("Background update interval", control: intervalControl,
                     note: "How often each page fetches new data on its own. A tap on a page always reloads immediately."),
             section("Auto-move", control: autoMoveControl,
-                    note: "Fades to the next page on its own. A swipe restarts the countdown."),
+                    note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
             section("Theme", control: themeControl, note: "Long press on a page also switches."),
+            section("Date and time", control: clockControl,
+                    note: "Shown in the lower left corner of every page."),
             section("Ambient light", control: ambientControl,
                     note: "Briefly uses the front camera to measure the room and dims the screen and background to match. No images are kept.",
                     extra: ambientStatus),
@@ -71,7 +75,7 @@ final class AboutViewController: UIViewController {
         ])
         stack.axis = .vertical
         stack.alignment = .fill
-        stack.spacing = 28
+        stack.spacing = 14
         stack.setCustomSpacing(8, after: title)
 
         for v in [stack, done] as [UIView] {
@@ -111,7 +115,7 @@ final class AboutViewController: UIViewController {
             views.append(control)
         }
         for text in lines + (note.map { [$0] } ?? []) {
-            let label = SpacedLabel(font: font(text == note ? 14 : 18), alpha: text == note ? 0.6 : 1)
+            let label = SpacedLabel(font: font(text == note ? 14 : 15), alpha: text == note ? 0.6 : 1)
             label.textAlignment = .left
             label.numberOfLines = 0
             label.adjustsFontSizeToFitWidth = false
@@ -121,7 +125,7 @@ final class AboutViewController: UIViewController {
         if let extra = extra { views.append(extra) }
         let stack = UIStackView(arrangedSubviews: views)
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.spacing = 6
         return stack
     }
 
@@ -137,6 +141,10 @@ final class AboutViewController: UIViewController {
         Settings.ambientInterval = Settings.ambientIntervals[ambientControl.selectedSegmentIndex]
         AmbientLight.shared.start()
         updateAmbientStatus()
+    }
+
+    @objc private func clockChanged() {
+        Settings.clockFormat = clockControl.selectedSegmentIndex
     }
 
     @objc private func updateAmbientStatus() {

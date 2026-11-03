@@ -73,7 +73,7 @@ final class UptimeService {
                     "custom_uptime_ranges": ranges.joined(separator: "-"), "logs": "1", "logs_limit": "1"]
         request.httpBody = form.map { "\($0.key)=\($0.value)" }.joined(separator: "&").data(using: .utf8)
 
-        session.dataTask(with: request) { data, response, error in
+        session.trackedDataTask(with: request) { data, response, error in
             let result: Result<[UptimeMonitor], Error>
             if let error = error {
                 result = .failure(error)

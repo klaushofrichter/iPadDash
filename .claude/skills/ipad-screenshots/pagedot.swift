@@ -15,14 +15,17 @@ let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPe
                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
 ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-let xs = [693, 743, 793, 843], y = 2012
+// The dots sit 88 px higher while the no-network banner is showing.
+let xs = [693, 743, 793, 843], ys = [2012, 1924]
 guard w == 1536, h == 2048 else { print(0); exit(0) }
-let lum = xs.map { x -> Int in
-    let i = (y * w + x) * 4
-    return Int(px[i]) + Int(px[i + 1]) + Int(px[i + 2])
+for y in ys {
+    let lum = xs.map { x -> Int in
+        let i = (y * w + x) * 4
+        return Int(px[i]) + Int(px[i + 1]) + Int(px[i + 2])
+    }
+    let sorted = lum.sorted()
+    // The lit dot is far brighter (dark theme) or darker (light theme) than the others.
+    if sorted[3] - sorted[2] > 150 { print(lum.firstIndex(of: sorted[3])! + 1); exit(0) }
+    if sorted[1] - sorted[0] > 150 { print(lum.firstIndex(of: sorted[0])! + 1); exit(0) }
 }
-let sorted = lum.sorted()
-// The lit dot is far brighter (dark theme) or darker (light theme) than the others.
-if sorted[3] - sorted[2] > 150 { print(lum.firstIndex(of: sorted[3])! + 1) }
-else if sorted[1] - sorted[0] > 150 { print(lum.firstIndex(of: sorted[0])! + 1) }
-else { print(0) }
+print(0)

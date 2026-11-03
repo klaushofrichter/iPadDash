@@ -132,6 +132,13 @@ func freshnessText(since timestamp: Date, now: Date) -> String {
     return "updated \(ageHr) hours ago"
 }
 
+/// "25 minutes" / "1 hour" / "3 days", rounded down.
+func durationText(_ seconds: TimeInterval) -> String {
+    let minutes = max(Int(seconds), 0) / 60
+    let (count, unit) = minutes < 60 ? (minutes, "minute") : minutes < 24 * 60 ? (minutes / 60, "hour") : (minutes / (24 * 60), "day")
+    return "\(count) \(unit)\(count == 1 ? "" : "s")"
+}
+
 func groupedNumber(_ n: Int) -> String {
     let f = NumberFormatter()
     f.numberStyle = .decimal
