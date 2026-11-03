@@ -4,22 +4,35 @@ import UIKit
 /// shrinks from full to empty, then grows from empty back to full, and so on.
 /// A reset always starts full. Animated by Core Animation, so it is smooth and cheap.
 /// While the page is frozen it is red and shrinks once over the freeze time.
+/// During the doubled wait after a swipe, a thin ring surrounds it.
 final class CountdownView: UIView {
     private let track = CAShapeLayer()
     private let pie = CAShapeLayer()
+    private let ring = CAShapeLayer()
     private var shrinking = true
-    /// Page frozen (swipe up): drawn in red.
+    /// Page frozen (tap): drawn in red.
     var frozen = false { didSet { if frozen != oldValue { applyColors() } } }
+    /// This countdown is twice the setting (the page was swiped to): shows the ring.
+    var doubled = false {
+        didSet {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            ring.isHidden = !doubled
+            CATransaction.commit()
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
         isHidden = true
-        for shape in [track, pie] {
+        ring.isHidden = true
+        for shape in [track, pie, ring] {
             shape.fillColor = UIColor.clear.cgColor
             layer.addSublayer(shape)
         }
         track.lineWidth = 1
+        ring.lineWidth = 1
         applyColors()
     }
 
@@ -33,6 +46,8 @@ final class CountdownView: UIView {
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         track.path = UIBezierPath(arcCenter: center, radius: radius, startAngle: 0,
                                   endAngle: 2 * .pi, clockwise: true).cgPath
+        ring.path = UIBezierPath(arcCenter: center, radius: radius + 2.5, startAngle: 0,
+                                 endAngle: 2 * .pi, clockwise: true).cgPath
         // A stroke as wide as the radius, centered at half the radius, fills a pie;
         // strokeEnd then sets the size of the slice, clockwise from 12 o'clock.
         pie.path = UIBezierPath(arcCenter: center, radius: radius / 2, startAngle: -.pi / 2,
@@ -46,6 +61,8 @@ final class CountdownView: UIView {
         let color = frozen ? alertInk : ink
         track.strokeColor = color.withAlphaComponent(0.35).cgColor
         pie.strokeColor = color.cgColor
+        // White on the dark theme; white wouldn't show on the light theme's paper.
+        ring.strokeColor = (Theme.isDark ? UIColor.white : UIColor.black).cgColor
         CATransaction.commit()
     }
 
@@ -57,11 +74,13 @@ final class CountdownView: UIView {
 
     /// Continue with the next cycle (the page just advanced).
     func nextCycle(interval: TimeInterval) {
+        doubled = false
         shrinking.toggle()
         run(interval)
     }
 
     func stop() {
+        doubled = false
         pie.removeAllAnimations()
         isHidden = true
     }

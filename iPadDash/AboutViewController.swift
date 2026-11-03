@@ -22,21 +22,20 @@ final class AboutViewController: UIViewController {
         super.viewDidLoad()
         let info = Bundle.main.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? "?"
-        let tokenStatus = StepsService.tokenFromBundle() == nil ? "missing" : "configured"
-        let clusterStatus = ClusterService().hasCredentials ? "configured" : "missing"
-        let uptimeStatus = UptimeService().hasKey ? "configured" : "missing"
-        let gitHubStatus = GitHubService().hasToken ? "configured" : "missing"
+        func status(_ keys: String...) -> String {
+            return keys.allSatisfy { Secrets.string($0) != nil } ? "configured" : "missing"
+        }
 
         let title = SpacedLabel(font: font(32, .bold), kern: 2)
         title.set("ABOUT")
         let appLine = SpacedLabel(font: font(20))
         appLine.set("iPadDash \(version)")
 
-        intervalControl.selectedSegmentIndex = Settings.refreshIntervals.firstIndex(of: Settings.refreshInterval) ?? 1
+        intervalControl.selectedSegmentIndex = Settings.refreshIntervals.firstIndex(of: Settings.refreshInterval)!
         intervalControl.addTarget(self, action: #selector(intervalChanged), for: .valueChanged)
-        autoMoveControl.selectedSegmentIndex = Settings.autoMoveIntervals.firstIndex(of: Settings.autoMoveInterval) ?? 0
+        autoMoveControl.selectedSegmentIndex = Settings.autoMoveIntervals.firstIndex(of: Settings.autoMoveInterval)!
         autoMoveControl.addTarget(self, action: #selector(autoMoveChanged), for: .valueChanged)
-        ambientControl.selectedSegmentIndex = Settings.ambientIntervals.firstIndex(of: Settings.ambientInterval) ?? 2
+        ambientControl.selectedSegmentIndex = Settings.ambientIntervals.firstIndex(of: Settings.ambientInterval)!
         ambientControl.addTarget(self, action: #selector(ambientChanged), for: .valueChanged)
         ambientStatus.textAlignment = .left
         themeControl.selectedSegmentIndex = Theme.isDark ? 1 : 0
@@ -53,7 +52,7 @@ final class AboutViewController: UIViewController {
         let stack = UIStackView(arrangedSubviews: [
             title, appLine,
             section("Background update interval", control: intervalControl,
-                    note: "How often each page fetches new data on its own. A tap on a page always reloads immediately."),
+                    note: "How often each page fetches new data on its own. A tap or swipe up on a page reloads immediately."),
             section("Auto-move", control: autoMoveControl,
                     note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
             section("Theme", control: themeControl, note: "Long press on a page also switches."),
@@ -62,15 +61,15 @@ final class AboutViewController: UIViewController {
             section("Ambient light", control: ambientControl,
                     note: "Briefly uses the front camera to measure the room and dims the screen and background to match. No images are kept.",
                     extra: ambientStatus),
-            section("Data source", lines: ["Steps & Claude: steps.skylar.technology  ·  token \(tokenStatus)",
+            section("Data source", lines: ["Steps & Claude: steps.skylar.technology  ·  token \(status("StepsToken"))",
                                            "Design: klaushofrichter/trmnl-for-steps",
-                                           "Cluster: Grafana Cloud (skylar-technology)  ·  token \(clusterStatus)",
-                                           "Uptime: UptimeRobot  ·  key \(uptimeStatus)",
-                                           "GitHub: klaushofrichter, hourly  ·  token \(gitHubStatus)"]),
-            section("Gestures", lines: ["Tap: reload the page",
+                                           "Cluster: Grafana Cloud (skylar-technology)  ·  token \(status("GrafanaUser", "GrafanaToken"))",
+                                           "Uptime: UptimeRobot  ·  key \(status("UptimeRobotKey"))",
+                                           "GitHub: klaushofrichter, hourly  ·  token \(status("GitHubToken"))"]),
+            section("Gestures", lines: ["Tap: freeze the page for 15 min and reload (red countdown, reloads every minute); again to restart the 15 min",
                                         "Long press: light / dark",
-                                        "Swipe left / right: switch page",
-                                        "Swipe up on a page: freeze it for 15 min (red countdown, reloads every minute); again to unfreeze",
+                                        "Swipe left / right: switch page; also ends a freeze",
+                                        "Swipe up on a page: reload it",
                                         "Swipe down: this page  ·  swipe up: close"]),
         ])
         stack.axis = .vertical

@@ -146,7 +146,7 @@ final class ServicesPanelView: PanelView {
 final class LineGraphView: UIView {
     var points: [(Date, Double)] = [] { didSet { setNeedsDisplay() } }
     var alert = false { didSet { setNeedsDisplay() } }
-    var span: TimeInterval = 24 * 3600
+    let span: TimeInterval = 24 * 3600
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -158,7 +158,7 @@ final class LineGraphView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        let lineInk = alert ? alertInk : inkColor(for: self)
+        let lineInk = alert ? alertInk : ink
         let plot = bounds.insetBy(dx: 1, dy: 2)
         let end = Date()
         let start = end.addingTimeInterval(-span)
@@ -169,7 +169,7 @@ final class LineGraphView: UIView {
         }
 
         // Grid: 0, 50, 100 % and a vertical line every 6 hours.
-        ctx.setStrokeColor(inkColor(for: self).withAlphaComponent(0.15).cgColor)
+        ctx.setStrokeColor(ink.withAlphaComponent(0.15).cgColor)
         ctx.setLineWidth(1)
         for pct in [0.0, 50, 100] {
             let y = point(end, pct).y

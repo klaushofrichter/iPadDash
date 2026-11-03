@@ -3,8 +3,10 @@ import UIKit
 /// Page 4: pull request activity for the klaushofrichter account. Open PRs and
 /// the top repositories on top; recent merges fill the rest of the page.
 /// Updates hourly and on tap; the title bar shows the data's age in minutes.
-final class GitHubPageViewController: UIViewController, DashboardPage {
-    private let fetchInterval: TimeInterval = 3600
+final class GitHubPageViewController: DashboardPageViewController {
+    override var fixedFetchInterval: TimeInterval? { return 3600 }
+    // The age in the title bar counts in minutes.
+    override var redrawInterval: TimeInterval? { return 60 }
     private let staleAfter: TimeInterval = 2 * 3600     // two missed hourly updates
     private let maxOpenPRs = 5                          // more turns the headline red
     // Text below the subtitle is twice the size of the other pages' detail text.
@@ -13,11 +15,7 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
     private let service = GitHubService()
     private var snapshot: GitHubSnapshot?
     private var lastError: Error?
-    private var lastFetch: Date?
-    private var fetching = false
-    private var fetchTimer: Timer?
-    private var ageTimer: Timer?
-    private(set) var hasAlert = false
+    private var lastSuccess: Date?
 
     private let heroLabel = SpacedLabel(font: font(36, .heavy))
     private let summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
@@ -26,23 +24,12 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
     private lazy var mergeHeading = sectionHeading("")
     private let mergeArea = UIView()
     private let mergeRows = UIStackView()
-    private let instanceLabel = SpacedLabel(font: font(16))
-    private let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
-        f.dateFormat = "h:mm a"
-        return f
-    }()
     private let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US")
         f.dateFormat = "MMM d"
         return f
     }()
-
-    override func loadView() {
-        view = PaperView()
-    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -63,15 +50,10 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         mergeArea.clipsToBounds = true
         mergeArea.addSubview(mergeRows)
 
-        let rule = InkView()
-        let titleLabel = SpacedLabel(font: font(16, .bold))
-        titleLabel.textAlignment = .left
-        titleLabel.set("GitHub · \(service.owner)")
-        instanceLabel.textAlignment = .right
-        let titleBar = UIStackView(arrangedSubviews: [titleLabel, instanceLabel])
+        let (rule, titleBar) = addTitleBar("GitHub · \(service.owner)")
 
         let views: [UIView] = [title, heroLabel, summaryLabel, openHeading, repoRows,
-                               mergeHeading, mergeArea, rule, titleBar]
+                               mergeHeading, mergeArea]
         for v in views {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
@@ -103,19 +85,10 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
             mergeRows.leadingAnchor.constraint(equalTo: mergeArea.leadingAnchor),
             mergeRows.trailingAnchor.constraint(equalTo: mergeArea.trailingAnchor),
 
-            rule.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
-            rule.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
-            rule.heightAnchor.constraint(equalToConstant: 2),
-            titleBar.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 8),
-            titleBar.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
-            titleBar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
             titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
-        render()
-        // Start right away, even before the page is shown, so its dot can turn red.
-        fetch()
-        startTimers()
+        startFetching()
     }
 
     override func viewDidLayoutSubviews() {
@@ -133,30 +106,8 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         }
     }
 
-    func reloadNow() {
-        fetch()
-        startTimers()
-    }
-
-    private func startTimers() {
-        fetchTimer?.invalidate()
-        fetchTimer = Timer.scheduledTimer(withTimeInterval: fetchInterval, repeats: true) { [weak self] _ in
-            self?.fetch()
-        }
-        if ageTimer == nil {
-            // The age in the title bar counts in minutes.
-            ageTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                self?.render()
-            }
-        }
-    }
-
-    private func fetch() {
-        guard !fetching else { return }
-        fetching = true
-        render()
+    override func load(completion: @escaping () -> Void) {
         service.fetchSnapshot { result in
-            self.fetching = false
             switch result {
             case .success(var snapshot):
                 #if DEBUG
@@ -167,15 +118,15 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
                 #endif
                 self.snapshot = snapshot
                 self.lastError = nil
-                self.lastFetch = Date()
+                self.lastSuccess = Date()
             case .failure(let error):
                 self.lastError = error
             }
-            self.render()
+            completion()
         }
     }
 
-    private func render() {
+    override func render() {
         let now = Date()
         if let s = snapshot {
             heroLabel.set(s.openCount == 1 ? "1 open pull request" : "\(s.openCount) open pull requests")
@@ -196,8 +147,8 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
                 if index < top.count {
                     let entry = top[index]
                     let count = entry.count == 1 ? "1 PR" : "\(entry.count) PRs"
-                    // With several open PRs, the age of the oldest one.
-                    let age = entry.oldest.map { " · " + wordedAge(now.timeIntervalSince($0)) } ?? ""
+                    // The age of the oldest open PR.
+                    let age = entry.oldest.map { " · " + durationText(now.timeIntervalSince($0)) } ?? ""
                     row.set(entry.repo, count + age)
                 }
             }
@@ -207,12 +158,12 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
                 if index < s.recentMerges.count {
                     let pr = s.recentMerges[index]
                     let when = Calendar.current.isDateInToday(pr.mergedAt)
-                        ? timeFormatter.string(from: pr.mergedAt) : dayFormatter.string(from: pr.mergedAt)
+                        ? timeOfDayFormatter.string(from: pr.mergedAt) : dayFormatter.string(from: pr.mergedAt)
                     row.configure(when: when, repo: "\(pr.repo) #\(pr.number) → \(pr.base)", title: pr.title)
                 }
             }
         } else {
-            heroLabel.set(lastError.map(errorText) ?? "loading…")
+            heroLabel.set(lastError?.localizedDescription ?? "loading…")
             summaryLabel.set("")
             noOpenLabel.isHidden = true
             repoRows.arrangedSubviews.forEach { $0.isHidden = true }
@@ -222,22 +173,12 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         heroLabel.alert = tooManyOpen || (snapshot == nil && lastError != nil)
 
         // Age of the data in minutes, counted from the last successful fetch.
-        let age = lastFetch.map { now.timeIntervalSince($0) }
-        var instance = age.map { "updated \(Int($0 / 60)) min ago" } ?? ""
-        if fetching {
-            instance = "refreshing…"
-        } else if let error = lastError, snapshot != nil {
-            instance = "fetch failed: \(errorText(error)) · " + instance
-        }
-        instanceLabel.set(instance)
+        let age = lastSuccess.map { now.timeIntervalSince($0) }
+        showStatus(error: lastError, hasData: snapshot != nil,
+                   updated: age.map { "updated \(Int($0 / 60)) min ago" } ?? "")
         let stale = (age ?? 0) > staleAfter
         instanceLabel.alert = lastError != nil || stale
-
-        let alert = lastError != nil || stale || tooManyOpen
-        if alert != hasAlert {
-            hasAlert = alert
-            postPageAlertChange()
-        }
+        hasAlert = lastError != nil || stale || tooManyOpen
     }
 
     private func sectionHeading(_ text: String) -> SpacedLabel {
@@ -247,9 +188,6 @@ final class GitHubPageViewController: UIViewController, DashboardPage {
         return label
     }
 
-    private func errorText(_ error: Error) -> String {
-        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-    }
 }
 
 /// Two lines: "12:38   traders-game #21", then the title starting under the ID,
@@ -289,12 +227,4 @@ final class MergeRowView: UIView {
         repoLabel.set(repo)
         titleLabel.set(title)
     }
-}
-
-/// "24 minutes" / "3 hours" / "1 day"
-func wordedAge(_ seconds: TimeInterval) -> String {
-    func unit(_ value: Int, _ name: String) -> String { return "\(value) \(name)\(value == 1 ? "" : "s")" }
-    if seconds < 3600 { return unit(max(Int(seconds / 60), 0), "minute") }
-    if seconds < 86400 { return unit(Int(seconds / 3600), "hour") }
-    return unit(Int(seconds / 86400), "day")
 }

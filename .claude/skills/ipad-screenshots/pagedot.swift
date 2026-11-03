@@ -1,6 +1,7 @@
+// Usage: pagedot IMAGE PAGES
 // Prints which page dot is lit in an iPadDash screenshot (1-based), or 0 if
-// none stands out (another app, About sheet, mid-fade).
-// Dot centers are for the iPad Air's 1536 x 2048 portrait screenshots.
+// none stands out (another app, About page, mid-fade).
+// Dot positions are for the iPad Air's 1536 x 2048 portrait screenshots.
 import Foundation
 import CoreGraphics
 import ImageIO
@@ -16,7 +17,8 @@ let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPe
 ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
 
 // The dots sit 88 px higher while the no-network banner is showing.
-let xs = [693, 743, 793, 843], ys = [2012, 1924]
+let pages = Int(CommandLine.arguments[2])!
+let xs = (0..<pages).map { 768 - 25 * (pages - 1) + 50 * $0 }, ys = [2012, 1924]
 guard w == 1536, h == 2048 else { print(0); exit(0) }
 for y in ys {
     let lum = xs.map { x -> Int in
@@ -25,7 +27,7 @@ for y in ys {
     }
     let sorted = lum.sorted()
     // The lit dot is far brighter (dark theme) or darker (light theme) than the others.
-    if sorted[3] - sorted[2] > 150 { print(lum.firstIndex(of: sorted[3])! + 1); exit(0) }
+    if sorted[pages - 1] - sorted[pages - 2] > 150 { print(lum.firstIndex(of: sorted[pages - 1])! + 1); exit(0) }
     if sorted[1] - sorted[0] > 150 { print(lum.firstIndex(of: sorted[0])! + 1); exit(0) }
 }
 print(0)

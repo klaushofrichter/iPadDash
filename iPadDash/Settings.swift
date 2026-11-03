@@ -25,14 +25,18 @@ enum Settings {
     private static let intervalKey = "refreshInterval"
 
     static var refreshInterval: TimeInterval {
-        get {
-            let stored = UserDefaults.standard.double(forKey: intervalKey)
-            return refreshIntervals.contains(stored) ? stored : 60
-        }
+        get { return stored(intervalKey, in: refreshIntervals, default: 60) }
         set {
             UserDefaults.standard.set(newValue, forKey: intervalKey)
             NotificationCenter.default.post(name: didChange, object: nil)
         }
+    }
+
+    private static func stored<T: Equatable>(_ key: String, in choices: [T], default fallback: T) -> T {
+        guard let value = UserDefaults.standard.object(forKey: key) as? T, choices.contains(value) else {
+            return fallback
+        }
+        return value
     }
 
     /// Choices for the date and time in the page footer; the first is the default.
@@ -43,10 +47,7 @@ enum Settings {
     private static let clockFormatKey = "clockFormat"
 
     static var clockFormat: Int {
-        get {
-            let stored = UserDefaults.standard.integer(forKey: clockFormatKey)
-            return clockFormatters.indices.contains(stored) ? stored : 0
-        }
+        get { return stored(clockFormatKey, in: Array(clockFormatters.indices), default: 0) }
         set {
             UserDefaults.standard.set(newValue, forKey: clockFormatKey)
             NotificationCenter.default.post(name: didChange, object: nil)
@@ -62,57 +63,29 @@ enum Settings {
         f.shortWeekdaySymbols = f.shortWeekdaySymbols.map { $0.uppercased() }   // TUE
         return f
     }
-}
 
-extension Settings {
     /// Automatic page advance ("auto-move"), in seconds; 0 means none.
     static let autoMoveIntervals: [TimeInterval] = [0, 15, 30, 60]
     private static let autoMoveKey = "autoMoveInterval"
 
     static var autoMoveInterval: TimeInterval {
-        get {
-            let stored = UserDefaults.standard.double(forKey: autoMoveKey)
-            return autoMoveIntervals.contains(stored) ? stored : 0
-        }
+        get { return stored(autoMoveKey, in: autoMoveIntervals, default: 0) }
         set {
             UserDefaults.standard.set(newValue, forKey: autoMoveKey)
             NotificationCenter.default.post(name: didChange, object: nil)
         }
     }
-}
 
-extension Settings {
     /// How often the front camera samples room brightness, in seconds; 0 means off.
     static let ambientIntervals: [TimeInterval] = [0, 60, 300, 900]
     private static let ambientKey = "ambientInterval"
 
     static var ambientInterval: TimeInterval {
-        get {
-            guard UserDefaults.standard.object(forKey: ambientKey) != nil else { return 300 }
-            let stored = UserDefaults.standard.double(forKey: ambientKey)
-            return ambientIntervals.contains(stored) ? stored : 300
-        }
+        get { return stored(ambientKey, in: ambientIntervals, default: 300) }
         set { UserDefaults.standard.set(newValue, forKey: ambientKey) }
     }
 }
 
 func intervalText(_ seconds: TimeInterval) -> String {
     return seconds < 60 ? "\(Int(seconds)) s" : "\(Int(seconds / 60)) min"
-}
-
-/// A swipeable dashboard page.
-protocol DashboardPage: AnyObject {
-    /// Fetch fresh data for everything on the page now (tap gesture).
-    func reloadNow()
-    /// True while anything on the page is drawn in red (shown on the page dots).
-    var hasAlert: Bool { get }
-}
-
-/// Posted by a page when its `hasAlert` changes.
-let pageAlertDidChange = Notification.Name("PageAlertDidChange")
-
-/// Tells the page dots that some page's `hasAlert` changed. Post only after the
-/// property is assigned: observers read it synchronously.
-func postPageAlertChange() {
-    NotificationCenter.default.post(name: pageAlertDidChange, object: nil)
 }

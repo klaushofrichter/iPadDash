@@ -17,16 +17,11 @@ var paper: UIColor {
     return Theme.isDark ? .black : UIColor(white: 0.45 + 0.55 * AmbientLight.shared.level, alpha: 1)
 }
 
-/// Ink for panels flagged as alerting (e.g. stale data): a red that reads well
+/// Ink for red items (e.g. stale data): a red that reads well
 /// on white, grey and black backgrounds.
 var alertInk: UIColor {
     return Theme.isDark ? UIColor(red: 1, green: 0.32, blue: 0.29, alpha: 1)
                         : UIColor(red: 0.84, green: 0.05, blue: 0.05, alpha: 1)
-}
-
-/// The ink a view should draw with. Red is set per item (`alert`), never for a whole panel.
-func inkColor(for view: UIView) -> UIColor {
-    return ink
 }
 
 /// Re-applies the current theme to a view tree: label colors, drawn views, ink fills.
@@ -41,10 +36,6 @@ func applyTheme(to view: UIView) {
         if #available(iOS 13.0, *) { control.selectedSegmentTintColor = ink }
         control.setTitleTextAttributes([.foregroundColor: ink], for: .normal)
         control.setTitleTextAttributes([.foregroundColor: paper], for: .selected)
-    }
-    if let dots = view as? UIPageControl {
-        dots.currentPageIndicatorTintColor = ink
-        dots.pageIndicatorTintColor = ink.withAlphaComponent(0.25)
     }
     view.setNeedsDisplay()
     view.subviews.forEach(applyTheme)
@@ -124,16 +115,20 @@ final class SpacedLabel: UILabel {
     /// Red regardless of the enclosing panel (e.g. one failing row).
     var alert = false { didSet { if alert != oldValue { refresh() } } }
 
-    func refresh() { set(rawText) }
-
-    func set(_ text: String) {
-        rawText = text
-        let shown = uppercase ? text.uppercased() : text
+    /// Redraws with the current colors.
+    func refresh() {
+        let shown = uppercase ? rawText.uppercased() : rawText
         attributedText = NSAttributedString(string: shown, attributes: [
             .kern: kern,
-            .foregroundColor: (alert ? alertInk : inkColor(for: self)).withAlphaComponent(alphaOfInk),
+            .foregroundColor: (alert ? alertInk : ink).withAlphaComponent(alphaOfInk),
             .font: font as Any,
         ])
+    }
+
+    func set(_ text: String) {
+        guard text != rawText else { return }
+        rawText = text
+        refresh()
     }
 }
 
@@ -153,7 +148,7 @@ final class RingGaugeView: UIView {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let unit = min(bounds.width, bounds.height) / 100
-        let ringInk = inkColor(for: self)
+        let ringInk = ink
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
 
         func ring(radius: CGFloat, width: CGFloat, fraction: CGFloat, minLength: CGFloat) {
@@ -209,7 +204,7 @@ final class HatchedBarView: UIView {
         outline.addClip()
         let fillWidth = bounds.width * CGFloat(min(max(percent, 0), 100)) / 100
         ctx.clip(to: CGRect(x: 0, y: 0, width: fillWidth, height: bounds.height))
-        let barInk = alert ? alertInk : inkColor(for: self)
+        let barInk = alert ? alertInk : ink
         ctx.setStrokeColor(barInk.withAlphaComponent(fillAlpha).cgColor)
         // Stripes running bottom-left to top-right; period measured perpendicular to them.
         let period = (lineWidth + gap) * scale * sqrt(2)

@@ -2,29 +2,14 @@ import UIKit
 
 /// Page 3: UptimeRobot monitors, modeled on the public status page. A monitor
 /// that is down turns its row red; the headline turns red if any is down.
-final class UptimePageViewController: UIViewController, DashboardPage {
+final class UptimePageViewController: DashboardPageViewController {
     private let service = UptimeService()
     private var monitors: [UptimeMonitor]?
     private var lastError: Error?
-    private var lastFetch: Date?
-    private var fetching = false
-    private var timer: Timer?
-    private(set) var hasAlert = false
 
     private let heroLabel = SpacedLabel(font: font(36, .heavy))
     private let summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
     private let list = UIStackView()
-    private let instanceLabel = SpacedLabel(font: font(16))
-    private let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
-        f.dateFormat = "h:mm a"
-        return f
-    }()
-
-    override func loadView() {
-        view = PaperView()
-    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,14 +20,9 @@ final class UptimePageViewController: UIViewController, DashboardPage {
         list.distribution = .fillEqually
         list.spacing = 8
 
-        let rule = InkView()
-        let titleLabel = SpacedLabel(font: font(16, .bold))
-        titleLabel.textAlignment = .left
-        titleLabel.set("Uptime · UptimeRobot")
-        instanceLabel.textAlignment = .right
-        let titleBar = UIStackView(arrangedSubviews: [titleLabel, instanceLabel])
+        let (rule, titleBar) = addTitleBar("Uptime · UptimeRobot")
 
-        for v in [title, heroLabel, summaryLabel, list, rule, titleBar] as [UIView] {
+        for v in [title, heroLabel, summaryLabel, list] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -59,54 +39,14 @@ final class UptimePageViewController: UIViewController, DashboardPage {
             list.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
             list.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
             rule.topAnchor.constraint(equalTo: list.bottomAnchor, constant: 16),
-            rule.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
-            rule.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
-            rule.heightAnchor.constraint(equalToConstant: 2),
-            titleBar.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 8),
-            titleBar.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
-            titleBar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
             titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
-        NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),
-                                               name: Settings.didChange, object: nil)
-        render()
-        // Start right away, even before the page is shown, so its dot can turn red.
-        fetch()
-        startTimer()
+        startFetching()
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        if lastFetch.map({ Date().timeIntervalSince($0) >= Settings.refreshInterval }) ?? true {
-            fetch()
-        }
-        startTimer()
-    }
-
-    func reloadNow() {
-        fetch()
-        startTimer()
-    }
-
-    @objc private func settingsChanged() {
-        startTimer()
-    }
-
-    private func startTimer() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: Settings.refreshInterval, repeats: true) { [weak self] _ in
-            self?.fetch()
-        }
-    }
-
-    private func fetch() {
-        guard !fetching else { return }
-        fetching = true
-        render()
+    override func load(completion: @escaping () -> Void) {
         service.fetchMonitors { result in
-            self.fetching = false
-            self.lastFetch = Date()
             switch result {
             case .success(var monitors):
                 #if DEBUG
@@ -114,7 +54,7 @@ final class UptimePageViewController: UIViewController, DashboardPage {
                 if let i = ProcessInfo.processInfo.environment["IPADDASH_UPTIME_DOWN"].flatMap(Int.init),
                    monitors.indices.contains(i) {
                     let m = monitors[i]
-                    monitors[i] = UptimeMonitor(name: m.name, url: m.url, status: .down, uptime30: m.uptime30,
+                    monitors[i] = UptimeMonitor(name: m.name, status: .down, uptime30: m.uptime30,
                                                 daily: m.daily.dropLast() + [98.5],
                                                 downSince: Date().addingTimeInterval(-12 * 60))
                 }
@@ -123,11 +63,11 @@ final class UptimePageViewController: UIViewController, DashboardPage {
                 self.lastError = nil
             case .failure(let error): self.lastError = error
             }
-            self.render()
+            completion()
         }
     }
 
-    private func render() {
+    override func render() {
         let now = Date()
         if let monitors = monitors {
             let down = monitors.filter { $0.status == .down }
@@ -146,28 +86,14 @@ final class UptimePageViewController: UIViewController, DashboardPage {
                 if index < monitors.count { row.configure(with: monitors[index], now: now) }
             }
         } else {
-            heroLabel.set(lastError.map(errorText) ?? "loading…")
+            heroLabel.set(lastError?.localizedDescription ?? "loading…")
             heroLabel.alert = lastError != nil
             summaryLabel.set("")
         }
 
-        var instance = lastFetch.map { "updated \(timeFormatter.string(from: $0))" } ?? ""
-        if fetching {
-            instance = "refreshing…"
-        } else if let error = lastError, monitors != nil {
-            instance = "fetch failed: \(errorText(error)) · " + instance
-        }
-        instanceLabel.set(instance)
+        showStatus(error: lastError, hasData: monitors != nil)
         instanceLabel.alert = lastError != nil
-        let alert = (monitors?.contains { $0.status == .down } ?? false) || lastError != nil
-        if alert != hasAlert {
-            hasAlert = alert
-            postPageAlertChange()
-        }
-    }
-
-    private func errorText(_ error: Error) -> String {
-        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        hasAlert = (monitors?.contains { $0.status == .down } ?? false) || lastError != nil
     }
 }
 
@@ -237,7 +163,7 @@ final class DayBarsView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard !days.isEmpty else { return }
-        let base = alert ? alertInk : inkColor(for: self)
+        let base = alert ? alertInk : ink
         let gap: CGFloat = 3
         let width = (bounds.width - gap * CGFloat(days.count - 1)) / CGFloat(days.count)
         for (i, day) in days.enumerated() {

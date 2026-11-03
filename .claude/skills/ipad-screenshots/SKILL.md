@@ -29,6 +29,5 @@ description: Screenshot every page of iPadDash on the USB-connected iPad and pos
    The user asked for this channel, so no confirmation per post is needed;
    never post these anywhere else.
 
-Pages: 1 Steps & Claude, 2 Cluster, 3 Uptime, 4 GitHub. If pages are added,
-pass the count as the second argument and extend the dot positions in
-`pagedot.swift` (dots are 50 px apart, centered at x = 768).
+Pages: 1 Steps & Claude, 2 Cluster, 3 Uptime, 4 GitHub. If pages are added, pass
+the count as the second argument to `capture.sh`.

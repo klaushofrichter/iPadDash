@@ -25,60 +25,31 @@ struct GitHubSnapshot {
     var recentMerges: [MergedPR] = []                   // newest first
 }
 
-enum GitHubError: LocalizedError {
-    case missingToken
-    case http(Int, String?)
-    case badResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .missingToken: return "no GitHub token in Secrets.plist"
-        case .http(let code, let message): return message.map { "HTTP \(code): \($0)" } ?? "HTTP \(code)"
-        case .badResponse: return "unexpected response"
-        }
-    }
-}
-
 final class GitHubService {
     let owner = "klaushofrichter"
-    private let token: String?
-    private let session: URLSession
-
-    init() {
-        var token: String?
-        if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-           let dict = NSDictionary(contentsOf: url),
-           let value = dict["GitHubToken"] as? String, !value.isEmpty {
-            token = value
-        }
-        self.token = token
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 20
-        session = URLSession(configuration: config)
-    }
-
-    var hasToken: Bool { return token != nil }
+    private let token = Secrets.string("GitHubToken")
 
     /// Completes on the main queue; fails if any of the searches fails.
     func fetchSnapshot(completion: @escaping (Result<GitHubSnapshot, Error>) -> Void) {
-        guard token != nil else { return completion(.failure(GitHubError.missingToken)) }
+        guard token != nil else { return completion(.failure(ServiceError.missing("GitHub token"))) }
         let now = Date()
         var snapshot = GitHubSnapshot()
         var firstError: Error?
         let group = DispatchGroup()
 
-        func search(_ query: String, perPage: Int, sort: String? = nil,
-                    _ apply: @escaping (Int, [[String: Any]]) -> Void) {
+        func collect<T>(_ apply: @escaping (T) -> Void) -> (Result<T, Error>) -> Void {
             group.enter()
-            self.search(query, perPage: perPage, sort: sort) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let (total, items)): apply(total, items)
-                    case .failure(let error): firstError = firstError ?? error
-                    }
-                    group.leave()
+            return { result in
+                switch result {
+                case .success(let value): apply(value)
+                case .failure(let error): firstError = firstError ?? error
                 }
+                group.leave()
             }
+        }
+
+        func search(_ query: String, perPage: Int, _ apply: @escaping (Int, [[String: Any]]) -> Void) {
+            self.search(query, perPage: perPage, completion: collect { apply($0.0, $0.1) })
         }
 
         search("is:pr is:open archived:false user:\(owner) created:<=\(isoDateTime(now.addingTimeInterval(-openPRMinAge)))",
@@ -89,7 +60,7 @@ final class GitHubService {
             for item in items {
                 let repo = GitHubService.repoName(item)
                 counts[repo, default: 0] += 1
-                if let created = (item["created_at"] as? String).flatMap(parseISODate) {
+                if let created = parseDate(item["created_at"]) {
                     oldest[repo] = min(oldest[repo] ?? created, created)
                 }
             }
@@ -103,25 +74,17 @@ final class GitHubService {
         // GraphQL rather than REST search, so each merge comes with its target branch.
         // Sorted by last update, which for merged PRs is (nearly always) the merge;
         // re-sorted by merge time below.
-        group.enter()
         let query = "is:pr is:merged user:\(owner) merged:>=\(isoDateTime(now.addingTimeInterval(-30 * 86400))) sort:updated-desc"
-        graphQLSearch(query, first: 50) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let (total, nodes)):
-                    snapshot.merged30d = total
-                    snapshot.recentMerges = nodes.compactMap { node -> MergedPR? in
-                        guard let merged = (node["mergedAt"] as? String).flatMap(parseISODate),
-                              let number = (node["number"] as? NSNumber)?.intValue else { return nil }
-                        let repo = (node["repository"] as? [String: Any])?["name"] as? String ?? "?"
-                        return MergedPR(repo: repo, number: number, title: node["title"] as? String ?? "",
-                                        mergedAt: merged, base: node["baseRefName"] as? String ?? "?")
-                    }.sorted { $0.mergedAt > $1.mergedAt }
-                case .failure(let error): firstError = firstError ?? error
-                }
-                group.leave()
-            }
-        }
+        graphQLSearch(query, first: 50, completion: collect { (total: Int, nodes: [[String: Any]]) in
+            snapshot.merged30d = total
+            snapshot.recentMerges = nodes.compactMap { node -> MergedPR? in
+                guard let merged = parseDate(node["mergedAt"]),
+                      let number = (node["number"] as? NSNumber)?.intValue else { return nil }
+                let repo = (node["repository"] as? [String: Any])?["name"] as? String ?? "?"
+                return MergedPR(repo: repo, number: number, title: node["title"] as? String ?? "",
+                                mergedAt: merged, base: node["baseRefName"] as? String ?? "?")
+            }.sorted { $0.mergedAt > $1.mergedAt }
+        })
 
         group.notify(queue: .main) {
             if let error = firstError {
@@ -147,56 +110,39 @@ final class GitHubService {
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONSerialization.data(withJSONObject: [
             "query": gql, "variables": ["q": query, "n": first]])
-        session.trackedDataTask(with: request) { data, response, error in
-            if let error = error { return completion(.failure(error)) }
-            let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                return completion(.failure(GitHubError.http(http.statusCode, json?["message"] as? String)))
-            }
-            if let message = (json?["errors"] as? [[String: Any]])?.first?["message"] as? String {
-                return completion(.failure(GitHubError.http(200, message)))
-            }
-            guard let search = (json?["data"] as? [String: Any])?["search"] as? [String: Any],
-                  let total = (search["issueCount"] as? NSNumber)?.intValue else {
-                return completion(.failure(GitHubError.badResponse))
-            }
-            completion(.success((total, search["nodes"] as? [[String: Any]] ?? [])))
-        }.resume()
+        fetchJSON(request, errorKey: "message") { result in
+            completion(result.flatMap { json in
+                if let message = (json["errors"] as? [[String: Any]])?.first?["message"] as? String {
+                    return .failure(ServiceError.http(200, message))
+                }
+                guard let search = (json["data"] as? [String: Any])?["search"] as? [String: Any],
+                      let total = (search["issueCount"] as? NSNumber)?.intValue else {
+                    return .failure(ServiceError.badResponse)
+                }
+                return .success((total, search["nodes"] as? [[String: Any]] ?? []))
+            })
+        }
     }
 
-    private func search(_ query: String, perPage: Int, sort: String?,
+    private func search(_ query: String, perPage: Int,
                         completion: @escaping (Result<(Int, [[String: Any]]), Error>) -> Void) {
         var components = URLComponents(string: "https://api.github.com/search/issues")!
-        var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "per_page", value: String(perPage))]
-        if let sort = sort {
-            items += [URLQueryItem(name: "sort", value: sort), URLQueryItem(name: "order", value: "desc")]
-        }
-        components.queryItems = items
+        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "per_page", value: String(perPage))]
         // "+" in the ISO time zone would otherwise read as a space.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        session.trackedDataTask(with: request) { data, response, error in
-            if let error = error { return completion(.failure(error)) }
-            let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                return completion(.failure(GitHubError.http(http.statusCode, json?["message"] as? String)))
-            }
-            guard let body = json, let total = (body["total_count"] as? NSNumber)?.intValue else {
-                return completion(.failure(GitHubError.badResponse))
-            }
-            completion(.success((total, body["items"] as? [[String: Any]] ?? [])))
-        }.resume()
+        fetchJSON(request, errorKey: "message") { result in
+            completion(result.flatMap { body in
+                guard let total = (body["total_count"] as? NSNumber)?.intValue else {
+                    return .failure(ServiceError.badResponse)
+                }
+                return .success((total, body["items"] as? [[String: Any]] ?? []))
+            })
+        }
     }
 }
 
-private let isoFormatter: ISO8601DateFormatter = {
-    let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime]
-    return f
-}()
-
-private func isoDateTime(_ date: Date) -> String { return isoFormatter.string(from: date) }
-private func parseISODate(_ text: String) -> Date? { return isoFormatter.date(from: text) }
+private func isoDateTime(_ date: Date) -> String { return isoPlain.string(from: date) }

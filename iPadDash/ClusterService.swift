@@ -54,47 +54,19 @@ struct ClusterSnapshot {
     }
 }
 
-enum GrafanaError: LocalizedError {
-    case missingCredentials
-    case http(Int)
-    case badResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .missingCredentials: return "no Grafana credentials in Secrets.plist"
-        case .http(let code): return "HTTP \(code)"
-        case .badResponse: return "unexpected response"
-        }
-    }
-}
-
 final class ClusterService {
     private let base = URL(string: "https://prometheus-prod-56-prod-us-east-2.grafana.net/api/prom/api/v1/")!
     private let selector = "cluster=\"skylar-technology\""
-    private let auth: String?
-    private let session: URLSession
-
-    init() {
-        var auth: String?
-        if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-           let dict = NSDictionary(contentsOf: url),
-           let user = dict["GrafanaUser"] as? String, !user.isEmpty,
-           let token = dict["GrafanaToken"] as? String, !token.isEmpty {
-            auth = "Basic " + Data("\(user):\(token)".utf8).base64EncodedString()
-        }
-        self.auth = auth
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 20
-        session = URLSession(configuration: config)
-    }
-
-    var hasCredentials: Bool { return auth != nil }
+    private let auth: String? = {
+        guard let user = Secrets.string("GrafanaUser"), let token = Secrets.string("GrafanaToken") else { return nil }
+        return "Basic " + Data("\(user):\(token)".utf8).base64EncodedString()
+    }()
 
     /// Runs all queries in parallel; completes on the main queue with whatever
     /// succeeded, or with the first error if nothing did.
     func fetchSnapshot(completion: @escaping (Result<ClusterSnapshot, Error>) -> Void) {
         guard auth != nil else {
-            completion(.failure(GrafanaError.missingCredentials))
+            completion(.failure(ServiceError.missing("Grafana credentials")))
             return
         }
         let c = selector
@@ -103,31 +75,24 @@ final class ClusterService {
         var successes = 0
         let group = DispatchGroup()
 
-        func instant(_ promql: String, _ apply: @escaping ([PromSample]) -> Void) {
+        func collect<T>(_ apply: @escaping (T) -> Void) -> (Result<T, Error>) -> Void {
             group.enter()
-            query(promql) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let samples): apply(samples); successes += 1
-                    case .failure(let error): firstError = firstError ?? error
-                    }
-                    group.leave()
+            return { result in
+                switch result {
+                case .success(let value): apply(value); successes += 1
+                case .failure(let error): firstError = firstError ?? error
                 }
+                group.leave()
             }
         }
 
+        func instant(_ promql: String, _ apply: @escaping ([PromSample]) -> Void) {
+            query(promql, completion: collect(apply))
+        }
+
         func range(_ promql: String, _ apply: @escaping ([(Date, Double)]) -> Void) {
-            group.enter()
             let end = Date()
-            queryRange(promql, start: end.addingTimeInterval(-24 * 3600), end: end, step: 600) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let points): apply(points); successes += 1
-                    case .failure(let error): firstError = firstError ?? error
-                    }
-                    group.leave()
-                }
-            }
+            queryRange(promql, start: end.addingTimeInterval(-24 * 3600), end: end, step: 600, completion: collect(apply))
         }
 
         let cpu = "100 * (1 - avg(rate(node_cpu_seconds_total{\(c),mode=\"idle\"}[5m])))"
@@ -182,7 +147,7 @@ final class ClusterService {
     private func query(_ promql: String, completion: @escaping (Result<[PromSample], Error>) -> Void) {
         get("query", ["query": promql]) { result in
             completion(result.flatMap { data -> Result<[PromSample], Error> in
-                guard let series = data["result"] as? [[String: Any]] else { return .failure(GrafanaError.badResponse) }
+                guard let series = data["result"] as? [[String: Any]] else { return .failure(ServiceError.badResponse) }
                 return .success(series.compactMap { item in
                     guard let pair = item["value"] as? [Any], pair.count == 2,
                           let text = pair[1] as? String, let value = Double(text), value.isFinite else { return nil }
@@ -200,7 +165,7 @@ final class ClusterService {
                       "step": String(Int(step))]
         get("query_range", params) { result in
             completion(result.flatMap { data -> Result<[(Date, Double)], Error> in
-                guard let series = data["result"] as? [[String: Any]] else { return .failure(GrafanaError.badResponse) }
+                guard let series = data["result"] as? [[String: Any]] else { return .failure(ServiceError.badResponse) }
                 let values = series.first?["values"] as? [[Any]] ?? []
                 return .success(values.compactMap { pair in
                     guard pair.count == 2, let t = pair[0] as? Double,
@@ -219,19 +184,14 @@ final class ClusterService {
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         var request = URLRequest(url: components.url!)
         request.setValue(auth, forHTTPHeaderField: "Authorization")
-        session.trackedDataTask(with: request) { data, response, error in
-            if let error = error { return completion(.failure(error)) }
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                return completion(.failure(GrafanaError.http(http.statusCode)))
-            }
-            guard let data = data,
-                  let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  json["status"] as? String == "success",
-                  let payload = json["data"] as? [String: Any] else {
-                return completion(.failure(GrafanaError.badResponse))
-            }
-            completion(.success(payload))
-        }.resume()
+        fetchJSON(request) { result in
+            completion(result.flatMap { json in
+                guard json["status"] as? String == "success", let payload = json["data"] as? [String: Any] else {
+                    return .failure(ServiceError.badResponse)
+                }
+                return .success(payload)
+            })
+        }
     }
 }
 

@@ -2,10 +2,10 @@ import UIKit
 
 /// Hosts the dashboard pages and the global gestures:
 ///   swipe left/right  next/previous page
-///   tap               reload everything on the current page
+///   tap               freeze the current page for 15 minutes and reload it (again: restart the 15 minutes)
 ///   long press        switch between light and dark
 ///   swipe down        About page (settings)
-///   swipe up          freeze the current page for 15 minutes (again: unfreeze)
+///   swipe up          reload everything on the current page
 /// With auto-move on, it also cross-fades to the next page every N seconds; a page
 /// reached by a swipe stays for 2N first, since it is probably of interest.
 /// A frozen page doesn't auto-move and reloads every minute; the countdown turns
@@ -14,7 +14,7 @@ import UIKit
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
-    private let pages: [UIViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
+    private let pages: [DashboardPageViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
                                                      UptimePageViewController(), GitHubPageViewController()]
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private let dots = PageDotsView()
@@ -27,8 +27,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     /// Set while the current page is frozen; kept by wall clock across the About page.
     private var frozenUntil: Date?
     private var frozenReloadTimer: Timer?
-    /// The next countdown is for a page the user just swiped to.
-    private var swipedToPage = false
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
     private let banner = UILabel()
     private lazy var bannerHeight = banner.heightAnchor.constraint(equalToConstant: 0)
@@ -92,7 +90,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         tap.require(toFail: longPress)
         let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(showAbout))
         swipeDown.direction = .down
-        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(toggleFreeze))
+        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(reloadCurrentPage))
         swipeUp.direction = .up
         for recognizer in [longPress, tap, swipeDown, swipeUp] as [UIGestureRecognizer] {
             recognizer.delegate = self
@@ -100,8 +98,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         }
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged),
                                                name: Theme.didChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(restartAutoMove),
-                                               name: Settings.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateDotAlerts),
                                                name: pageAlertDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateBanner),
@@ -133,6 +129,10 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        stopAutoMove()
+    }
+
+    private func stopAutoMove() {
         autoMoveTimer?.invalidate()
         autoMoveTimer = nil
         frozenReloadTimer?.invalidate()
@@ -142,17 +142,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     // MARK: - Auto-move
 
-    /// Starts the countdown over (full circle). Called on appear, on settings
-    /// changes and after a manual swipe; the auto-move setting itself is kept.
-    /// While frozen, it runs the rest of the freeze instead.
-    @objc private func restartAutoMove() {
-        autoMoveTimer?.invalidate()
-        autoMoveTimer = nil
-        frozenReloadTimer?.invalidate()
-        frozenReloadTimer = nil
-        countdown.stop()
-        let swiped = swipedToPage
-        swipedToPage = false
+    /// Starts the countdown over (full circle), doubled if the page was just swiped
+    /// to. Called on appear (also after the About page changed a setting), on a tap
+    /// and after a manual swipe. While frozen, it runs the rest of the freeze instead.
+    private func restartAutoMove(swiped: Bool = false) {
+        stopAutoMove()
         guard view.window != nil, presentedViewController == nil else { return }
 
         if let until = frozenUntil, until > Date() {
@@ -164,15 +158,16 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                 self?.restartAutoMove()   // back to the normal cycle, starting full
             }
             frozenReloadTimer = Timer.scheduledTimer(withTimeInterval: frozenReloadInterval, repeats: true) { [weak self] _ in
-                self?.tapped()
+                self?.reloadCurrentPage()
             }
             return
         }
         frozenUntil = nil
         countdown.frozen = false
         let interval = Settings.autoMoveInterval
-        guard interval > 0, pages.count > 1, view.window != nil, presentedViewController == nil else { return }
+        guard interval > 0 else { return }
         let firstDelay = swiped ? 2 * interval : interval
+        countdown.doubled = swiped
         countdown.restart(interval: firstDelay)
         scheduleAutoMove(after: firstDelay, interval: interval)
     }
@@ -188,7 +183,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     /// Cross-fade: freeze the current page in a snapshot, switch pages underneath
     /// without animation, then fade the snapshot out.
     private func fadeToNextPage() {
-        guard let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current),
+        guard let current = currentPage, let index = pages.firstIndex(of: current),
               let snapshot = pager.view.snapshotView(afterScreenUpdates: false) else { return }
         let next = (index + 1) % pages.count
         snapshot.frame = pager.view.frame
@@ -203,8 +198,12 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         })
     }
 
+    private var currentPage: DashboardPageViewController? {
+        return pager.viewControllers?.first as? DashboardPageViewController
+    }
+
     @objc private func updateDotAlerts() {
-        dots.alerts = pages.map { ($0 as? DashboardPage)?.hasAlert ?? false }
+        dots.alerts = pages.map { $0.hasAlert }
     }
 
     private func updateClock() {
@@ -214,7 +213,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     @objc private func updateBanner() {
         banner.backgroundColor = alertInk
         banner.textColor = Theme.isDark ? .black : .white
-        guard let offline = Connectivity.shared.offlineDuration(), offline >= offlineAlertAfter else {
+        guard let offline = Connectivity.shared.offlineDuration, offline >= offlineAlertAfter else {
             bannerHeight.constant = 0
             return
         }
@@ -231,13 +230,14 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     // MARK: - Gestures
 
-    @objc private func toggleFreeze() {
-        frozenUntil = frozenUntil == nil ? Date().addingTimeInterval(freezeDuration) : nil
+    @objc private func tapped() {
+        frozenUntil = Date().addingTimeInterval(freezeDuration)
         restartAutoMove()
+        reloadCurrentPage()
     }
 
-    @objc private func tapped() {
-        (pager.viewControllers?.first as? DashboardPage)?.reloadNow()
+    @objc private func reloadCurrentPage() {
+        currentPage?.reloadNow()
     }
 
     @objc private func longPressed(_ recognizer: UILongPressGestureRecognizer) {
@@ -263,25 +263,24 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        guard pages.count > 1, let index = pages.firstIndex(of: viewController) else { return nil }
+        guard let index = pages.firstIndex(where: { $0 === viewController }) else { return nil }
         return pages[(index + pages.count - 1) % pages.count]
     }
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        guard pages.count > 1, let index = pages.firstIndex(of: viewController) else { return nil }
+        guard let index = pages.firstIndex(where: { $0 === viewController }) else { return nil }
         return pages[(index + 1) % pages.count]
     }
 
     func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool,
                             previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
-        if let current = pager.viewControllers?.first, let index = pages.firstIndex(of: current) {
+        if let current = currentPage, let index = pages.firstIndex(of: current) {
             dots.currentPage = index
         }
         if completed {   // a manual swipe unfreezes and restarts the countdown, doubled
             frozenUntil = nil
-            swipedToPage = true
-            restartAutoMove()
+            restartAutoMove(swiped: true)
         }
     }
 }

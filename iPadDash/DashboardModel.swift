@@ -18,7 +18,7 @@ struct StepsSummary {
     let status: String
     let hero: String          // "2,800 to go" / "1,200 above"
     let freshness: String
-    /// More than `staleAfter` since the last steps reading: the panel turns red.
+    /// More than `staleAfter` since the last steps reading: the freshness line turns red.
     let stale: Bool
 
     init(reading: StepsReading, now: Date, calendar: Calendar = .current) {
@@ -97,7 +97,7 @@ struct ClaudeSummary {
     let session: UsageWindow
     let hero: String
     let freshness: String
-    /// More than `staleAfter` since the last Claude reading: the panel turns red.
+    /// More than `staleAfter` since the last Claude reading: the freshness line turns red.
     let stale: Bool
 
     init(reading: ClaudeReading, now: Date) {
@@ -117,7 +117,7 @@ struct ClaudeSummary {
     }
 }
 
-/// A panel whose reading is older than this is drawn in red.
+/// A reading older than this turns its freshness line red.
 let staleAfter: TimeInterval = 130 * 60
 
 /// "updated just now" / "updated 12 min ago" / "updated 3 hours ago" / "DATA IS OUTDATED"
@@ -139,11 +139,15 @@ func durationText(_ seconds: TimeInterval) -> String {
     return "\(count) \(unit)\(count == 1 ? "" : "s")"
 }
 
-func groupedNumber(_ n: Int) -> String {
+private let groupedFormatter: NumberFormatter = {
     let f = NumberFormatter()
     f.numberStyle = .decimal
     f.locale = Locale(identifier: "en_US")
-    return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    return f
+}()
+
+func groupedNumber(_ n: Int) -> String {
+    return groupedFormatter.string(from: NSNumber(value: n)) ?? "\(n)"
 }
 
 /// Whole numbers without decimals, like Liquid prints them; otherwise one decimal.
