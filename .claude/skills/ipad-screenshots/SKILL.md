@@ -7,12 +7,14 @@ description: Screenshot every page of iPadDash on the USB-connected iPad and pos
 
 1. **Capture.** Run, in the background if auto-move is slow:
    ```sh
-   .claude/skills/ipad-screenshots/capture.sh "$SCRATCH/ipad-shots"
+   IPAD=silver .claude/skills/ipad-screenshots/capture.sh "$SCRATCH/ipad-shots"
    ```
+   `IPAD` is `silver` or `black` (the two iPad Airs) and may be left out when only
+   one iPad is connected; ask the user which one if they didn't say.
    (`$SCRATCH` = your scratchpad directory.) It waits for auto-move to show each
    page, keeps one settled 1536 × 2048 shot per page (`page-1.png` … `page-4.png`)
    and finds the page from the lit page dot. Exit 2 means pages were missing:
-   auto-move is None, a page is frozen (swipe up), or the app is not in front.
+   auto-move is None, a page is frozen (tap), or the app is not in front.
    Tell the user which, rather than retrying blindly. Needs `idevicescreenshot`,
    which needs the developer disk image mounted (`deploy.sh` mounts it).
 

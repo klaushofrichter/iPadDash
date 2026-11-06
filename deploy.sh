@@ -8,14 +8,22 @@
 # bundle, and installs it with libimobiledevice (Xcode 27 can't deploy to iOS 12).
 #
 # Usage:
-#   ./deploy.sh            build, patch, sign, install, launch
+#   ./deploy.sh [IPAD]     build, patch, sign, install, launch
 #   ./deploy.sh --check    unsigned build + checks only (no iPad or Apple ID needed)
+# IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
+# left out when only one iPad is connected.
 #
 # Requires: the credentials below in .env; for install also an Apple ID added in
 # Xcode, DEVELOPMENT_TEAM set on the target, and `brew install ideviceinstaller`.
 set -eu
 
 cd "$(dirname "$0")"
+. ./ipad-select.sh
+CHECK=""; IPAD=""
+for arg in "$@"; do
+    case $arg in --check) CHECK=1 ;; *) IPAD=$arg ;; esac
+done
+[ -n "$CHECK" ] || udids=$(select_ipads "$IPAD")
 MIN_OS=12.0
 CONFIG=${CONFIG:-Release}
 DERIVED=build
@@ -55,7 +63,7 @@ cat > iPadDash/Secrets.plist <<EOF
 EOF
 
 SIGNING=-allowProvisioningUpdates
-[ "${1:-}" = "--check" ] && SIGNING=CODE_SIGNING_ALLOWED=NO
+[ -n "$CHECK" ] && SIGNING=CODE_SIGNING_ALLOWED=NO
 xcodebuild -project iPadDash.xcodeproj -scheme iPadDash -configuration "$CONFIG" \
     -destination 'generic/platform=iOS' -derivedDataPath "$DERIVED" "$SIGNING" -quiet build
 
@@ -71,7 +79,7 @@ if printf '%s' "$modern" | grep -vq '(.*weak)'; then
     exit 1
 fi
 echo "Checks passed: minos $minos, MinimumOSVersion $MIN_OS"
-[ "${1:-}" = "--check" ] && exit 0
+[ -n "$CHECK" ] && exit 0
 
 # Same scheme as the cluster's services: YYYY.MM.DD.N, set at deploy time and not
 # stored in the source (other builds say "dev"). N is the same-day count of earlier
@@ -90,23 +98,25 @@ codesign -f -s "$identity" --entitlements "$DERIVED/entitlements.plist" "$APP"
 rm -rf "$DERIVED/ipa" && mkdir -p "$DERIVED/ipa/Payload"
 cp -R "$APP" "$DERIVED/ipa/Payload/"
 (cd "$DERIVED/ipa" && zip -qr ../iPadDash.ipa Payload)
-ideviceinstaller install "$DERIVED/iPadDash.ipa"
-git tag "v$VERSION"
-echo "Installed version $VERSION"
-
-# Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
-# no longer ships: 12.4.zip from github.com/filsv/iOSDeviceSupport, unpacked
-# into $DDI_DIR (the iPad checks Apple's signature when mounting). The image
-# stays mounted until the iPad reboots.
-DDI_DIR=${DDI_DIR:-$HOME/Library/Developer/iPadDash-DDI/12.4}
-if ! ideviceimagemounter list 2>/dev/null | grep -q ImageSignature; then
-    if [ -f "$DDI_DIR/DeveloperDiskImage.dmg" ]; then
-        ideviceimagemounter mount "$DDI_DIR/DeveloperDiskImage.dmg" \
-            "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
-    else
-        echo "Installed; not launched: no developer disk image in $DDI_DIR"
-        exit 0
-    fi
-fi
 bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
-idevicedebug --detach run "$bundle_id" && echo "Launched $bundle_id"
+DDI_DIR=${DDI_DIR:-$HOME/Library/Developer/iPadDash-DDI/12.4}
+for udid in $udids; do
+    name="$(ipad_color "$udid") iPad"
+    ideviceinstaller -u "$udid" install "$DERIVED/iPadDash.ipa"
+    git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || git tag "v$VERSION"
+    echo "Installed version $VERSION on the $name"
+
+    # Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
+    # no longer ships: 12.4.zip from github.com/filsv/iOSDeviceSupport, unpacked
+    # into $DDI_DIR (the iPad checks Apple's signature when mounting). The image
+    # stays mounted until the iPad reboots.
+    if ! ideviceimagemounter -u "$udid" list 2>/dev/null | grep -q ImageSignature; then
+        if [ ! -f "$DDI_DIR/DeveloperDiskImage.dmg" ]; then
+            echo "Not launched: no developer disk image in $DDI_DIR"
+            continue
+        fi
+        ideviceimagemounter -u "$udid" mount "$DDI_DIR/DeveloperDiskImage.dmg" \
+            "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
+    fi
+    idevicedebug -u "$udid" --detach run "$bundle_id" && echo "Launched on the $name"
+done
