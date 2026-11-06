@@ -103,6 +103,7 @@ final class ClusterPageViewController: DashboardPageViewController {
 
         showStatus(error: lastError, hasData: snapshot != nil)
         instanceLabel.alert = lastError != nil
-        hasAlert = snapshot?.needsAttention ?? false || lastError != nil
+        alerts = (lastError.map { [PageAlert("Cluster", $0.localizedDescription)] } ?? [])
+            + (snapshot?.attention ?? [])
     }
 }

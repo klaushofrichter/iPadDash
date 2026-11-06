@@ -114,13 +114,15 @@ final class SpacedLabel: UILabel {
     private var rawText = ""
     /// Red regardless of the enclosing panel (e.g. one failing row).
     var alert = false { didSet { if alert != oldValue { refresh() } } }
+    /// A color of its own instead of the page ink (e.g. a temperature).
+    var inkOverride: UIColor? { didSet { if inkOverride != oldValue { refresh() } } }
 
     /// Redraws with the current colors.
     func refresh() {
         let shown = uppercase ? rawText.uppercased() : rawText
         attributedText = NSAttributedString(string: shown, attributes: [
             .kern: kern,
-            .foregroundColor: (alert ? alertInk : ink).withAlphaComponent(alphaOfInk),
+            .foregroundColor: (alert ? alertInk : inkOverride ?? ink).withAlphaComponent(alphaOfInk),
             .font: font as Any,
         ])
     }

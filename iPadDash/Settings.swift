@@ -76,6 +76,31 @@ enum Settings {
         }
     }
 
+    /// The summary page is the home page: shown alone, and returned to after a swipe.
+    /// Off, it isn't shown at all.
+    private static let summaryKey = "summaryPage"
+
+    static var summaryPage: Bool {
+        get { return UserDefaults.standard.bool(forKey: summaryKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: summaryKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
+    }
+
+    /// Address of the Kasa plug the charger is plugged into; empty = no charge control.
+    private static let chargePlugKey = "chargePlug"
+
+    static var chargePlug: String {
+        get { return UserDefaults.standard.string(forKey: chargePlugKey) ?? "" }
+        set {
+            let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value != chargePlug else { return }
+            UserDefaults.standard.set(value, forKey: chargePlugKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
+    }
+
     /// How often the front camera samples room brightness, in seconds; 0 means off.
     static let ambientIntervals: [TimeInterval] = [0, 60, 300, 900]
     private static let ambientKey = "ambientInterval"

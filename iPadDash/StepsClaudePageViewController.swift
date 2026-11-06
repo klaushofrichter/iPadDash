@@ -110,6 +110,10 @@ final class StepsClaudePageViewController: DashboardPageViewController {
         }
 
         showStatus(error: stepsError ?? claudeError, hasData: stepsReading != nil || claudeReading != nil)
-        hasAlert = stepsPanel.alerting || claudePanel.alerting || claudePanel.overuse
+        var alerts: [PageAlert] = []
+        if stepsPanel.alerting, let r = stepsReading { alerts.append(PageAlert("Steps data", "\(durationText(now.timeIntervalSince(r.timestamp))) old")) }
+        if claudePanel.alerting, let r = claudeReading { alerts.append(PageAlert("Claude data", "\(durationText(now.timeIntervalSince(r.timestamp))) old")) }
+        if claudePanel.overuse { alerts.append(PageAlert("Claude usage", "ahead of pace")) }
+        self.alerts = alerts
     }
 }

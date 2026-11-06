@@ -248,6 +248,8 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "iPadDash briefly uses the front camera to measure room brightness and dim the display to match. No images are captured or stored.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iPadDash uses the approximate location of the iPad to show the local weather on the summary page.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "iPadDash switches the Kasa plug of the iPad's charger to keep the battery between 30 and 80 percent.";
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
@@ -290,6 +292,8 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "iPadDash briefly uses the front camera to measure room brightness and dim the display to match. No images are captured or stored.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iPadDash uses the approximate location of the iPad to show the local weather on the summary page.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "iPadDash switches the Kasa plug of the iPad's charger to keep the battery between 30 and 80 percent.";
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;

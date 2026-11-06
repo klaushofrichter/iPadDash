@@ -44,13 +44,25 @@ struct ClusterSnapshot {
     var servicesDown: [ServiceProbe] { return services.filter { !$0.up } }
     var stale: Bool { return (sampleAge ?? .infinity) > ClusterLimits.sampleAge }
 
-    /// Anything the cluster page draws in red (same limits as the page).
-    var needsAttention: Bool {
-        let usage = [cpuPct, memPct, diskPct].compactMap { $0 }.contains { $0 > ClusterLimits.usagePct }
-        let backupLate = backupAge.map { $0 > ClusterLimits.backupAge } ?? true
-        let certSoon = certMinDays.map { $0 < ClusterLimits.certDays } ?? false
-        let cronLate = cronJobs.contains { $0.age > ClusterLimits.cronJobAge }
-        return stale || !servicesDown.isEmpty || usage || backupLate || certSoon || cronLate
+    /// Everything the cluster page draws in red (same limits as the page).
+    var attention: [PageAlert] {
+        var alerts: [PageAlert] = []
+        if stale { alerts.append(PageAlert("Cluster metrics", sampleAge.map { "\(ageText($0)) old" } ?? "none")) }
+        alerts += servicesDown.map { PageAlert("Down: \($0.name)") }
+        for (name, pct) in [("CPU", cpuPct), ("Memory", memPct), ("Disk", diskPct)] {
+            if let pct = pct, pct > ClusterLimits.usagePct { alerts.append(PageAlert("Cluster \(name)", "\(Int(pct))%")) }
+        }
+        if let age = backupAge {
+            if age > ClusterLimits.backupAge { alerts.append(PageAlert("Backup", "\(ageText(age)) ago")) }
+        } else {
+            alerts.append(PageAlert("Backup", "n/a"))
+        }
+        if let days = certMinDays, days < ClusterLimits.certDays {
+            alerts.append(PageAlert("Certificate \(certMinName ?? "")", "\(Int(days)) d"))
+        }
+        alerts += cronJobs.filter { $0.age > ClusterLimits.cronJobAge }
+            .map { PageAlert("CronJob \($0.name)", "\(ageText($0.age)) ago") }
+        return alerts
     }
 }
 

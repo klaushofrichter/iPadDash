@@ -1,7 +1,17 @@
 import UIKit
 
-/// Posted by a page when its `hasAlert` changes.
+/// Posted by a page when its `alerts` change.
 let pageAlertDidChange = Notification.Name("PageAlertDidChange")
+
+/// Something a page draws in red, as listed on the summary page: "Service down" · "cams".
+struct PageAlert: Equatable {
+    let what: String
+    let detail: String
+    init(_ what: String, _ detail: String = "") {
+        self.what = what
+        self.detail = detail
+    }
+}
 
 let timeOfDayFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -14,12 +24,15 @@ let timeOfDayFormatter: DateFormatter = {
 /// result under a title bar. Subclasses build their views, call `startFetching()`
 /// at the end of `viewDidLoad`, and override `load(completion:)` and `render()`.
 class DashboardPageViewController: UIViewController {
-    /// True while anything on the page is drawn in red (shown on the page dots).
-    var hasAlert = false {
+    /// Everything on the page drawn in red (a red page dot, and rows on the summary page).
+    var alerts: [PageAlert] = [] {
         didSet {
-            if hasAlert != oldValue { NotificationCenter.default.post(name: pageAlertDidChange, object: nil) }
+            if alerts != oldValue { NotificationCenter.default.post(name: pageAlertDidChange, object: nil) }
         }
     }
+    var hasAlert: Bool { return !alerts.isEmpty }
+    /// The page's name as in its title bar, without the detail after " · ".
+    private(set) var pageName = ""
     /// Right side of the title bar: last update, or what went wrong.
     let instanceLabel = SpacedLabel(font: font(16))
     private(set) var fetching = false
@@ -95,6 +108,7 @@ class DashboardPageViewController: UIViewController {
     /// Adds the rule and the title bar (name on the left, `instanceLabel` on the
     /// right) with their side margins. The page places them vertically.
     func addTitleBar(_ name: String) -> (rule: UIView, bar: UIView) {
+        pageName = name.components(separatedBy: " · ")[0]
         let rule = InkView()
         let titleLabel = SpacedLabel(font: font(16, .bold))
         titleLabel.textAlignment = .left

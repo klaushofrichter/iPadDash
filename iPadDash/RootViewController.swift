@@ -11,11 +11,18 @@ import UIKit
 /// A frozen page doesn't auto-move and reloads every minute; the countdown turns
 /// red and runs over the freeze. Swiping to another page also unfreezes.
 /// A red banner along the bottom, on every page, reports a lost network.
+/// With the summary page on (Settings.summaryPage), it is the first page and the
+/// only one shown: no auto-move there, and a page swiped to fades back to it after
+/// twice the auto-move time (15 s when auto-move is None).
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
-    private let pages: [DashboardPageViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
-                                                     UptimePageViewController(), GitHubPageViewController()]
+    private let dataPages: [DashboardPageViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
+                                                         UptimePageViewController(), GitHubPageViewController()]
+    private let summary = SummaryPageViewController()
+    /// The pages in the rotation: the data pages, after the summary page when it is on.
+    private var pages: [DashboardPageViewController] = []
+    private var summaryMode: Bool { return pages.first === summary }
     private let pager = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private let dots = PageDotsView()
     private let slideFromTop = SlideFromTopTransition()
@@ -31,7 +38,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let banner = UILabel()
     private lazy var bannerHeight = banner.heightAnchor.constraint(equalToConstant: 0)
     private let bannerShownHeight: CGFloat = 44
-    private let offlineAlertAfter: TimeInterval = 20 * 60
 
     override var prefersStatusBarHidden: Bool { return true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .portrait }
@@ -44,14 +50,13 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         super.viewDidLoad()
         pager.dataSource = self
         pager.delegate = self
-        pager.setViewControllers([pages[0]], direction: .forward, animated: false)
+        applyPageSet()
         addChild(pager)
         view.addSubview(pager.view)
         pager.didMove(toParent: self)
 
         // Footer strip below the pages: date and time at the left, page dots centered,
         // auto-move countdown at the right.
-        dots.numberOfPages = pages.count
 
         clock.textAlignment = .left
         banner.textAlignment = .center
@@ -73,6 +78,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
             pager.view.bottomAnchor.constraint(equalTo: banner.topAnchor, constant: -footerHeight),
             clock.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
             clock.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            clock.trailingAnchor.constraint(lessThanOrEqualTo: dots.leadingAnchor, constant: -12),
             dots.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             dots.centerYAnchor.constraint(equalTo: banner.topAnchor, constant: -footerHeight / 2),
             // Same right margin as the pages' content and rules.
@@ -114,16 +120,26 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         updateClock()
         // Load every page now so all of them fetch in the background and can flag
         // red markup on their dot before they are first shown.
-        pages.forEach { _ = $0.view }
+        dataPages.forEach { _ = $0.view }
+        summary.sources = dataPages   // after loading: the summary shows their names
+        summary.openPage = { [weak self] page in self?.open(page) }
         updateDotAlerts()
         updateBanner()
         applyTheme(to: view)
         AmbientLight.shared.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(chargeChanged),
+                                               name: ChargeControl.didChange, object: nil)
+        ChargeControl.shared.start()
+    }
+
+    @objc private func chargeChanged() {
+        updateClock()
     }
 
     // The About page is full screen, so these also pause auto-move while it is open.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        applyPageSet()
         restartAutoMove()
     }
 
@@ -164,6 +180,19 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         }
         frozenUntil = nil
         countdown.frozen = false
+        if summaryMode {
+            // Home stays put; any other page goes back to it once.
+            guard currentPage !== summary else { return }
+            let interval = Settings.autoMoveInterval > 0 ? Settings.autoMoveInterval : 15
+            let delay = swiped ? 2 * interval : interval
+            countdown.doubled = swiped
+            countdown.restart(interval: delay)
+            autoMoveTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+                self?.fade(to: 0)
+                self?.restartAutoMove()
+            }
+            return
+        }
         let interval = Settings.autoMoveInterval
         guard interval > 0 else { return }
         let firstDelay = swiped ? 2 * interval : interval
@@ -174,18 +203,17 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     private func scheduleAutoMove(after delay: TimeInterval, interval: TimeInterval) {
         autoMoveTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            self?.fadeToNextPage()
-            self?.countdown.nextCycle(interval: interval)
-            self?.scheduleAutoMove(after: interval, interval: interval)
+            guard let self = self, let current = self.currentPage, let index = self.pages.firstIndex(of: current) else { return }
+            self.fade(to: (index + 1) % self.pages.count)
+            self.countdown.nextCycle(interval: interval)
+            self.scheduleAutoMove(after: interval, interval: interval)
         }
     }
 
     /// Cross-fade: freeze the current page in a snapshot, switch pages underneath
     /// without animation, then fade the snapshot out.
-    private func fadeToNextPage() {
-        guard let current = currentPage, let index = pages.firstIndex(of: current),
-              let snapshot = pager.view.snapshotView(afterScreenUpdates: false) else { return }
-        let next = (index + 1) % pages.count
+    private func fade(to next: Int) {
+        guard let snapshot = pager.view.snapshotView(afterScreenUpdates: false) else { return }
         snapshot.frame = pager.view.frame
         snapshot.isUserInteractionEnabled = false
         view.insertSubview(snapshot, aboveSubview: pager.view)
@@ -198,6 +226,20 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         })
     }
 
+    /// Puts the summary page in or out of the rotation to match the setting; with it
+    /// on, shows it. Called at start and when returning from the About page.
+    private func applyPageSet() {
+        let wanted = Settings.summaryPage ? [summary] + dataPages : dataPages
+        guard wanted != pages else { return }
+        pages = wanted
+        dots.numberOfPages = pages.count
+        let current = currentPage.flatMap { pages.contains($0) ? $0 : nil }
+        let shown = summaryMode ? summary : current ?? pages[0]
+        pager.setViewControllers([shown], direction: .forward, animated: false)
+        dots.currentPage = pages.firstIndex(of: shown) ?? 0
+        updateDotAlerts()
+    }
+
     private var currentPage: DashboardPageViewController? {
         return pager.viewControllers?.first as? DashboardPageViewController
     }
@@ -207,13 +249,16 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     }
 
     private func updateClock() {
-        clock.set(Settings.clockFormatters[Settings.clockFormat].string(from: Date()))
+        let time = Settings.clockFormatters[Settings.clockFormat].string(from: Date())
+        let charge = ChargeControl.shared
+        clock.set(charge.batteryText.map { "\(time)  ·  \($0)" } ?? time)
+        clock.alert = !charge.alerts.isEmpty
     }
 
     @objc private func updateBanner() {
         banner.backgroundColor = alertInk
         banner.textColor = Theme.isDark ? .black : .white
-        guard let offline = Connectivity.shared.offlineDuration, offline >= offlineAlertAfter else {
+        guard let offline = Connectivity.shared.offlineDuration, offline >= Connectivity.alertAfter else {
             bannerHeight.constant = 0
             return
         }
@@ -236,6 +281,14 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         reloadCurrentPage()
     }
 
+    /// Fades to `page` as if swiped to: unfrozen, with the doubled countdown.
+    private func open(_ page: DashboardPageViewController) {
+        guard let index = pages.firstIndex(of: page), page !== currentPage else { return }
+        fade(to: index)
+        frozenUntil = nil
+        restartAutoMove(swiped: true)
+    }
+
     @objc private func reloadCurrentPage() {
         currentPage?.reloadNow()
     }
@@ -251,6 +304,20 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         about.modalPresentationStyle = .fullScreen   // iOS 13+ would default to a sheet
         about.transitioningDelegate = slideFromTop  // pulled down from the top, like the swipe
         present(about, animated: true)
+    }
+
+    // A tap on something with its own tap action (a red row on the summary page)
+    // does that instead of freezing the page.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer is UITapGestureRecognizer else { return true }
+        var candidate = touch.view
+        while let v = candidate, v !== view {
+            if v.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer && $0.isEnabled }) == true {
+                return false
+            }
+            candidate = v.superview
+        }
+        return true
     }
 
     // The page scroll view's pan must not swallow the vertical swipe.

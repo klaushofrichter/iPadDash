@@ -66,6 +66,8 @@ func fetchJSON(_ request: URLRequest, errorKey: String? = nil,
 final class Connectivity {
     static let shared = Connectivity()
     static let didChange = Notification.Name("Connectivity.didChange")
+    /// Offline this long shows the red banner (and a summary page row).
+    static let alertAfter: TimeInterval = 20 * 60
 
     /// When requests started failing with no response from anywhere in between.
     private var offlineSince: Date?

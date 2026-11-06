@@ -178,7 +178,11 @@ final class GitHubPageViewController: DashboardPageViewController {
                    updated: age.map { "updated \(Int($0 / 60)) min ago" } ?? "")
         let stale = (age ?? 0) > staleAfter
         instanceLabel.alert = lastError != nil || stale
-        hasAlert = lastError != nil || stale || tooManyOpen
+        var alerts: [PageAlert] = []
+        if let error = lastError { alerts.append(PageAlert("GitHub", error.localizedDescription)) }
+        if stale, let age = age { alerts.append(PageAlert("GitHub data", "\(durationText(age)) old")) }
+        if tooManyOpen, let s = snapshot { alerts.append(PageAlert("Open pull requests", "\(s.openCount)")) }
+        self.alerts = alerts
     }
 
     private func sectionHeading(_ text: String) -> SpacedLabel {
