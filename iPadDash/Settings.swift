@@ -69,7 +69,7 @@ enum Settings {
     private static let autoMoveKey = "autoMoveInterval"
 
     static var autoMoveInterval: TimeInterval {
-        get { return stored(autoMoveKey, in: autoMoveIntervals, default: 0) }
+        get { return stored(autoMoveKey, in: autoMoveIntervals, default: 15) }
         set {
             UserDefaults.standard.set(newValue, forKey: autoMoveKey)
             NotificationCenter.default.post(name: didChange, object: nil)
