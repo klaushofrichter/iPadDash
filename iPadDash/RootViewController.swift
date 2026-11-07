@@ -39,6 +39,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private var frozenUntil: Date?
     private var frozenReloadTimer: Timer?
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
+    /// "refreshing", left of the countdown, shown briefly after a tap.
+    private let refreshNote = SpacedLabel(font: font(14), alpha: 0.7)
     private let banner = UILabel()
     private lazy var bannerHeight = banner.heightAnchor.constraint(equalToConstant: 0)
     private let bannerShownHeight: CGFloat = 44
@@ -67,9 +69,12 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         banner.font = font(20, .bold)
         banner.clipsToBounds = true
 
-        for v in [pager.view!, clock, dots, countdown, banner] {
+        refreshNote.set("refreshing")
+        refreshNote.alpha = 0
+        for v in [pager.view!, clock, dots, countdown, banner, refreshNote] {
             v.translatesAutoresizingMaskIntoConstraints = false
         }
+        view.addSubview(refreshNote)
         view.addSubview(clock)
         view.addSubview(dots)
         view.addSubview(countdown)
@@ -88,6 +93,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
             // Same right margin as the pages' content and rules.
             countdown.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
             countdown.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            refreshNote.trailingAnchor.constraint(equalTo: countdown.leadingAnchor, constant: -10),
+            refreshNote.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
             banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             banner.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
@@ -289,6 +296,12 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         frozenUntil = Date().addingTimeInterval(freezeDuration)
         restartAutoMove()
         reloadCurrentPage()
+        // Acknowledge the tap: "refreshing" fades out within a second.
+        refreshNote.layer.removeAllAnimations()
+        refreshNote.alpha = 1
+        UIView.animate(withDuration: 0.8, delay: 0.2, options: [.curveEaseIn], animations: {
+            self.refreshNote.alpha = 0
+        })
     }
 
     /// Fades to `page` as if swiped to: unfrozen, with the doubled countdown.
