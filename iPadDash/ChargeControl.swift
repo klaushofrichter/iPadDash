@@ -86,6 +86,8 @@ final class ChargeControl {
 
     static let onBelow: Float = 0.30
     static let offAbove: Float = 0.80
+    /// Below this, off power, the battery is red.
+    static let lowBelow: Float = 0.20
     private let checkInterval: TimeInterval = 5 * 60
     private let watchdogDelay = 2 * 60 * 60        // seconds until the plug turns itself on
     private let rearmBelow = 60 * 60               // re-arm when less than this is left
@@ -114,6 +116,9 @@ final class ChargeControl {
 
     /// Whether external power is reaching the iPad.
     var isPowered: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["IPADDASH_POWERED"] != nil { return true }
+        #endif
         let state = UIDevice.current.batteryState
         return state == .charging || state == .full
     }
@@ -135,7 +140,7 @@ final class ChargeControl {
     var alerts: [PageAlert] {
         var items: [PageAlert] = []
         let now = Date()
-        if let level = batteryLevel, level < 0.2, !isPowered {
+        if let level = batteryLevel, level < ChargeControl.lowBelow, !isPowered {
             items.append(PageAlert("Battery low", "\(Int((level * 100).rounded()))%"))
         }
         if let since = failingSince, now.timeIntervalSince(since) >= 15 * 60 {

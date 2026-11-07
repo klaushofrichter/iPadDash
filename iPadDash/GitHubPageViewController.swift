@@ -179,7 +179,7 @@ final class GitHubPageViewController: DashboardPageViewController {
         let stale = (age ?? 0) > staleAfter
         instanceLabel.alert = lastError != nil || stale
         var alerts: [PageAlert] = []
-        if let error = lastError { alerts.append(PageAlert("GitHub", error.localizedDescription)) }
+        if let error = lastError { alerts.append(PageAlert("GitHub", error: error)) }
         if stale, let age = age { alerts.append(PageAlert("GitHub data", "\(durationText(age)) old")) }
         if tooManyOpen, let s = snapshot { alerts.append(PageAlert("Open pull requests", "\(s.openCount)")) }
         self.alerts = alerts

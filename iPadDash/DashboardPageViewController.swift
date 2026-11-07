@@ -7,9 +7,21 @@ let pageAlertDidChange = Notification.Name("PageAlertDidChange")
 struct PageAlert: Equatable {
     let what: String
     let detail: String
+    /// A fetch that failed for lack of network; the summary page leaves these out
+    /// while it shows "No network".
+    var offline = false
     init(_ what: String, _ detail: String = "") {
         self.what = what
         self.detail = detail
+    }
+
+    /// A failed fetch: "Cluster" · "The Internet connection appears to be offline."
+    init(_ what: String, error: Error) {
+        self.init(what, error.localizedDescription)
+        let networkCodes: [URLError.Code] = [.notConnectedToInternet, .networkConnectionLost, .timedOut,
+                                             .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                                             .internationalRoamingOff, .dataNotAllowed]
+        offline = (error as? URLError).map { networkCodes.contains($0.code) } ?? false
     }
 }
 
@@ -31,6 +43,9 @@ class DashboardPageViewController: UIViewController {
         }
     }
     var hasAlert: Bool { return !alerts.isEmpty }
+    /// Set by a page that joins the rotation, the page dots and the summary page's
+    /// list of names only while it has red items (or is showing).
+    var onlyWhenRed: Bool { return false }
     /// The page's name as in its title bar, without the detail after " · ".
     private(set) var pageName = ""
     /// Right side of the title bar: last update, or what went wrong.

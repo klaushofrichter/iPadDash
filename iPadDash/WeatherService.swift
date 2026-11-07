@@ -16,7 +16,7 @@ struct WeatherForecast {
 }
 
 final class WeatherService: NSObject, CLLocationManagerDelegate {
-    private let hours = 8
+    private let hours = SummaryPageViewController.hours + 3
     private let manager = CLLocationManager()
     private let geocoder = CLGeocoder()
     private var waiting: [(CLLocation?) -> Void] = []

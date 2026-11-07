@@ -94,7 +94,7 @@ final class UptimePageViewController: DashboardPageViewController {
         showStatus(error: lastError, hasData: monitors != nil)
         instanceLabel.alert = lastError != nil
         var alerts: [PageAlert] = []
-        if let error = lastError { alerts.append(PageAlert("Uptime", error.localizedDescription)) }
+        if let error = lastError { alerts.append(PageAlert("Uptime", error: error)) }
         for m in monitors ?? [] where m.status == .down {
             alerts.append(PageAlert("Down: \(m.name)", m.downSince.map { ageText(now.timeIntervalSince($0)) } ?? ""))
         }

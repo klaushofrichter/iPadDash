@@ -51,7 +51,11 @@ final class KeyValueRow: UIView {
         keyLabel.textAlignment = .left
         valueLabel.textAlignment = .right
         keyLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        keyLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        // A long value ("The Internet connection appears to be offline.") is cut short;
+        // the name stays.
+        keyLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        valueLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        valueLabel.lineBreakMode = .byTruncatingTail
         let row = UIStackView(arrangedSubviews: [keyLabel, valueLabel])
         row.spacing = 12
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -146,6 +150,12 @@ final class ServicesPanelView: PanelView {
 final class LineGraphView: UIView {
     var points: [(Date, Double)] = [] { didSet { setNeedsDisplay() } }
     var alert = false { didSet { setNeedsDisplay() } }
+    /// The dashed red line, in percent.
+    var limit = ClusterLimits.usagePct { didSet { setNeedsDisplay() } }
+    /// Labels the 0, 50 and 100 % lines and the limit, and draws the limit line solid red.
+    var showsScale = false { didSet { setNeedsDisplay() } }
+    /// Hatches the area red where the line is under the limit (battery).
+    var redBelowLimit = false { didSet { setNeedsDisplay() } }
     let span: TimeInterval = 24 * 3600
 
     override init(frame: CGRect) {
@@ -184,14 +194,33 @@ final class LineGraphView: UIView {
         ctx.strokePath()
 
         // Limit line.
-        let limitY = point(end, ClusterLimits.usagePct).y
+        let limitY = point(end, limit).y
         ctx.saveGState()
-        ctx.setStrokeColor(alertInk.withAlphaComponent(0.5).cgColor)
+        ctx.setStrokeColor(alertInk.withAlphaComponent(showsScale ? 0.9 : 0.5).cgColor)
+        if showsScale { ctx.setLineWidth(2) }
         ctx.setLineDash(phase: 0, lengths: [4, 4])
         ctx.move(to: CGPoint(x: plot.minX, y: limitY))
         ctx.addLine(to: CGPoint(x: plot.maxX, y: limitY))
         ctx.strokePath()
         ctx.restoreGState()
+
+        // Scale labels on top of everything: 0, 50, 100 % at the left, the limit at the right.
+        defer {
+            if showsScale {
+                func label(_ text: String, at value: Double, color: UIColor, right: Bool = false) {
+                    let attributes: [NSAttributedString.Key: Any] = [.font: font(13, .semibold), .foregroundColor: color]
+                    let size = (text as NSString).size(withAttributes: attributes)
+                    let y = min(max(point(end, value).y - size.height - 2, plot.minY), plot.maxY - size.height)
+                    let x = right ? plot.maxX - size.width - 4 : plot.minX + 4
+                    paper.withAlphaComponent(0.8).setFill()
+                    UIBezierPath(roundedRect: CGRect(x: x - 3, y: y, width: size.width + 6, height: size.height),
+                                 cornerRadius: 3).fill()
+                    (text as NSString).draw(at: CGPoint(x: x, y: y), withAttributes: attributes)
+                }
+                for pct in [100.0, 50, 0] { label("\(Int(pct))%", at: pct, color: ink.withAlphaComponent(0.6)) }
+                label("\(Int(limit))%", at: limit, color: alertInk, right: true)
+            }
+        }
 
         let visible = points.filter { $0.0 >= start }
         guard visible.count > 1 else { return }
@@ -206,18 +235,42 @@ final class LineGraphView: UIView {
         area.addLine(to: CGPoint(x: point(visible.last!.0, 0).x, y: plot.maxY))
         area.addLine(to: CGPoint(x: point(visible.first!.0, 0).x, y: plot.maxY))
         area.close()
-        ctx.saveGState()
-        area.addClip()
-        ctx.setStrokeColor(lineInk.withAlphaComponent(0.35).cgColor)
-        ctx.setLineWidth(1.5)
-        var x = plot.minX - plot.height
-        while x < plot.maxX {
-            ctx.move(to: CGPoint(x: x, y: plot.maxY))
-            ctx.addLine(to: CGPoint(x: x + plot.height, y: plot.minY))
-            x += 7
+        func hatch(_ color: UIColor, in columns: [ClosedRange<CGFloat>]?) {
+            ctx.saveGState()
+            area.addClip()
+            if let columns = columns {
+                guard !columns.isEmpty else { return ctx.restoreGState() }
+                ctx.clip(to: columns.map { CGRect(x: $0.lowerBound, y: plot.minY,
+                                                  width: $0.upperBound - $0.lowerBound, height: plot.height) })
+            }
+            ctx.setStrokeColor(color.cgColor)
+            ctx.setLineWidth(1.5)
+            var x = plot.minX - plot.height
+            while x < plot.maxX {
+                ctx.move(to: CGPoint(x: x, y: plot.maxY))
+                ctx.addLine(to: CGPoint(x: x + plot.height, y: plot.minY))
+                x += 7
+            }
+            ctx.strokePath()
+            ctx.restoreGState()
         }
-        ctx.strokePath()
-        ctx.restoreGState()
+        hatch(lineInk.withAlphaComponent(0.35), in: nil)
+        if redBelowLimit {
+            // Red over the stretches where the line is under the limit.
+            var columns: [ClosedRange<CGFloat>] = []
+            var from: CGFloat?
+            for (a, b) in zip(visible, visible.dropFirst()) {
+                let pa = point(a.0, a.1), pb = point(b.0, b.1)
+                let crossX = a.1 == b.1 ? pa.x : pa.x + (pb.x - pa.x) * CGFloat((limit - a.1) / (b.1 - a.1))
+                if a.1 < limit, from == nil { from = pa.x }
+                if (a.1 < limit) != (b.1 < limit) {
+                    if let f = from { columns.append(f...crossX); from = nil } else { from = crossX }
+                }
+            }
+            if let f = from { columns.append(f...point(visible.last!.0, 0).x) }
+            hatch(paper, in: columns)                       // clear the grey stripes there first
+            hatch(alertInk.withAlphaComponent(0.8), in: columns)
+        }
 
         lineInk.setStroke()
         line.lineWidth = 2.5
