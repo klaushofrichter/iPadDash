@@ -115,7 +115,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         }
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged),
                                                name: Theme.didChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(updateDotAlerts),
+        NotificationCenter.default.addObserver(self, selector: #selector(updatePages),
                                                name: pageAlertDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateBanner),
                                                name: Connectivity.didChange, object: nil)
@@ -134,7 +134,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         dataPages.forEach { _ = $0.view }
         summary.sources = dataPages   // after loading: the summary shows their names
         summary.openPage = { [weak self] page in self?.open(page) }
-        updateDotAlerts()
+        updatePages()
         updateBanner()
         applyTheme(to: view)
         AmbientLight.shared.start()
@@ -247,7 +247,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     /// Recomputes the rotation (summary setting, red-only pages) and the dots,
     /// without changing the page shown.
-    private func updatePages() {
+    @objc private func updatePages() {
         let shown = currentPage
         let data = dataPages.filter { !$0.onlyWhenRed || $0.hasAlert || $0 === shown }
         let wanted = Settings.summaryPage ? [summary] + data : data
@@ -261,10 +261,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     private var currentPage: DashboardPageViewController? {
         return pager.viewControllers?.first as? DashboardPageViewController
-    }
-
-    @objc private func updateDotAlerts() {
-        updatePages()
     }
 
     private func updateClock() {
@@ -287,7 +283,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     @objc private func themeChanged() {
         updateBanner()
         applyTheme(to: view)
-        pages.filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }
+        // All pages, including those out of the rotation right now.
+        ([summary] + dataPages).filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }
     }
 
     // MARK: - Gestures

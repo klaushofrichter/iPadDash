@@ -5,10 +5,10 @@ enum Theme {
     static let didChange = Notification.Name("ThemeDidChange")
     private static let key = "darkMode"
 
-    static var isDark: Bool {
-        get { return UserDefaults.standard.bool(forKey: key) }
-        set {
-            UserDefaults.standard.set(newValue, forKey: key)
+    /// Kept in memory: every drawn color reads it.
+    static var isDark = UserDefaults.standard.bool(forKey: key) {
+        didSet {
+            UserDefaults.standard.set(isDark, forKey: key)
             NotificationCenter.default.post(name: didChange, object: nil)
         }
     }
@@ -27,9 +27,13 @@ enum Settings {
     static var refreshInterval: TimeInterval {
         get { return stored(intervalKey, in: refreshIntervals, default: 60) }
         set {
-            UserDefaults.standard.set(newValue, forKey: intervalKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            save(newValue, intervalKey)
         }
+    }
+
+    private static func save(_ value: Any, _ key: String) {
+        UserDefaults.standard.set(value, forKey: key)
+        NotificationCenter.default.post(name: didChange, object: nil)
     }
 
     private static func stored<T: Equatable>(_ key: String, in choices: [T], default fallback: T) -> T {
@@ -49,8 +53,7 @@ enum Settings {
     static var clockFormat: Int {
         get { return stored(clockFormatKey, in: Array(clockFormatters.indices), default: 0) }
         set {
-            UserDefaults.standard.set(newValue, forKey: clockFormatKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            save(newValue, clockFormatKey)
         }
     }
 
@@ -71,8 +74,7 @@ enum Settings {
     static var autoMoveInterval: TimeInterval {
         get { return stored(autoMoveKey, in: autoMoveIntervals, default: 15) }
         set {
-            UserDefaults.standard.set(newValue, forKey: autoMoveKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            save(newValue, autoMoveKey)
         }
     }
 
@@ -83,8 +85,7 @@ enum Settings {
     static var summaryPage: Bool {
         get { return UserDefaults.standard.bool(forKey: summaryKey) }
         set {
-            UserDefaults.standard.set(newValue, forKey: summaryKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            save(newValue, summaryKey)
         }
     }
 
@@ -96,8 +97,7 @@ enum Settings {
         set {
             let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard value != chargePlug else { return }
-            UserDefaults.standard.set(value, forKey: chargePlugKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            save(value, chargePlugKey)
         }
     }
 

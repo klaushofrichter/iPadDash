@@ -76,6 +76,11 @@ final class ClusterService {
 
     /// Runs all queries in parallel; completes on the main queue with whatever
     /// succeeded, or with the first error if nothing did.
+    /// The 24 h graphs and when they were fetched. Their points are 10 minutes
+    /// apart, so they are fetched again only after that.
+    private var history: (fetched: Date, cpu: [(Date, Double)], mem: [(Date, Double)])?
+    private let historyStep: TimeInterval = 600
+
     func fetchSnapshot(completion: @escaping (Result<ClusterSnapshot, Error>) -> Void) {
         guard auth != nil else {
             completion(.failure(ServiceError.missing("Grafana credentials")))
@@ -83,28 +88,16 @@ final class ClusterService {
         }
         let c = selector
         var snapshot = ClusterSnapshot()
-        var firstError: Error?
-        var successes = 0
-        let group = DispatchGroup()
-
-        func collect<T>(_ apply: @escaping (T) -> Void) -> (Result<T, Error>) -> Void {
-            group.enter()
-            return { result in
-                switch result {
-                case .success(let value): apply(value); successes += 1
-                case .failure(let error): firstError = firstError ?? error
-                }
-                group.leave()
-            }
-        }
+        let group = FetchGroup()
 
         func instant(_ promql: String, _ apply: @escaping ([PromSample]) -> Void) {
-            query(promql, completion: collect(apply))
+            query(promql, completion: group.collect(apply))
         }
 
         func range(_ promql: String, _ apply: @escaping ([(Date, Double)]) -> Void) {
             let end = Date()
-            queryRange(promql, start: end.addingTimeInterval(-24 * 3600), end: end, step: 600, completion: collect(apply))
+            queryRange(promql, start: end.addingTimeInterval(-24 * 3600), end: end, step: historyStep,
+                       completion: group.collect(apply))
         }
 
         let cpu = "100 * (1 - avg(rate(node_cpu_seconds_total{\(c),mode=\"idle\"}[5m])))"
@@ -137,11 +130,20 @@ final class ClusterService {
                 .sorted { $0.name < $1.name }
         }
         instant("time() - max(timestamp(up{\(c)}))") { snapshot.sampleAge = $0.first?.value }
-        range(cpu) { snapshot.cpuHistory = $0 }
-        range(mem) { snapshot.memHistory = $0 }
+        let cached = history.flatMap { Date().timeIntervalSince($0.fetched) < historyStep ? $0 : nil }
+        if let cached = cached {
+            snapshot.cpuHistory = cached.cpu
+            snapshot.memHistory = cached.mem
+        } else {
+            range(cpu) { snapshot.cpuHistory = $0 }
+            range(mem) { snapshot.memHistory = $0 }
+        }
 
-        group.notify(queue: .main) {
-            if successes == 0, let error = firstError {
+        group.notify {
+            if cached == nil, !snapshot.cpuHistory.isEmpty || !snapshot.memHistory.isEmpty {
+                self.history = (Date(), snapshot.cpuHistory, snapshot.memHistory)
+            }
+            if group.successes == 0, let error = group.firstError {
                 completion(.failure(error))
             } else {
                 completion(.success(snapshot))
@@ -190,11 +192,7 @@ final class ClusterService {
 
     private func get(_ endpoint: String, _ params: [String: String],
                      completion: @escaping (Result<[String: Any], Error>) -> Void) {
-        var components = URLComponents(url: base.appendingPathComponent(endpoint), resolvingAgainstBaseURL: false)!
-        components.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
-        // URLComponents leaves "+" alone, but Prometheus would read it as a space.
-        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        var request = URLRequest(url: components.url!)
+        var request = URLRequest(url: url(base.appendingPathComponent(endpoint), query: params))
         request.setValue(auth, forHTTPHeaderField: "Authorization")
         fetchJSON(request) { result in
             completion(result.flatMap { json in

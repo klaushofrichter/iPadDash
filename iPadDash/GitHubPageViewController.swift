@@ -1,6 +1,6 @@
 import UIKit
 
-/// Page 4: pull request activity for the klaushofrichter account. Open PRs and
+/// Pull request activity for the klaushofrichter account. Open PRs and
 /// the top repositories on top; recent merges fill the rest of the page.
 /// Updates hourly and on tap; the title bar shows the data's age in minutes.
 final class GitHubPageViewController: DashboardPageViewController {
@@ -17,25 +17,15 @@ final class GitHubPageViewController: DashboardPageViewController {
     private var lastError: Error?
     private var lastSuccess: Date?
 
-    private let heroLabel = SpacedLabel(font: font(36, .heavy))
-    private let summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
     private let repoRows = UIStackView()
     private let noOpenLabel = SpacedLabel(font: font(32), alpha: 0.6)
     private lazy var mergeHeading = sectionHeading("")
     private let mergeArea = UIView()
     private let mergeRows = UIStackView()
-    private let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
-        f.dateFormat = "MMM d"
-        return f
-    }()
+    private let dayFormatter = makeDateFormatter("MMM d")
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let title = SpacedLabel(font: font(26, .bold), kern: 2)
-        title.set("GITHUB")
-
         let openHeading = sectionHeading("Open pull requests by repository")
         repoRows.axis = .vertical
         repoRows.spacing = 10
@@ -51,9 +41,9 @@ final class GitHubPageViewController: DashboardPageViewController {
         mergeArea.addSubview(mergeRows)
 
         let (rule, titleBar) = addTitleBar("GitHub · \(service.owner)")
+        let header = addHeader("GitHub")
 
-        let views: [UIView] = [title, heroLabel, summaryLabel, openHeading, repoRows,
-                               mergeHeading, mergeArea]
+        let views: [UIView] = [openHeading, repoRows, mergeHeading, mergeArea]
         for v in views {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
@@ -61,14 +51,7 @@ final class GitHubPageViewController: DashboardPageViewController {
         let guide = view.safeAreaLayoutGuide
         let side: CGFloat = 24
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
-            title.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            heroLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            heroLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            summaryLabel.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: 6),
-            summaryLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-
-            openHeading.topAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 32),
+            openHeading.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 32),
             openHeading.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
             repoRows.topAnchor.constraint(equalTo: openHeading.bottomAnchor, constant: 14),
             repoRows.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
@@ -141,26 +124,16 @@ final class GitHubPageViewController: DashboardPageViewController {
             let top = Array(s.openByRepo.prefix(5))
             noOpenLabel.isHidden = !top.isEmpty
             // Unused slots collapse, so the merge list below gets the space.
-            let rows = repoRows.arrangedSubviews.compactMap { $0 as? KeyValueRow }
-            for (index, row) in rows.enumerated() {
-                row.isHidden = index >= top.count
-                if index < top.count {
-                    let entry = top[index]
-                    let count = entry.count == 1 ? "1 PR" : "\(entry.count) PRs"
-                    // The age of the oldest open PR.
-                    let age = entry.oldest.map { " · " + durationText(now.timeIntervalSince($0)) } ?? ""
-                    row.set(entry.repo, count + age)
-                }
+            repoRows.showRows(top) { (row: KeyValueRow, entry) in
+                let count = entry.count == 1 ? "1 PR" : "\(entry.count) PRs"
+                // The age of the oldest open PR.
+                let age = entry.oldest.map { " · " + durationText(now.timeIntervalSince($0)) } ?? ""
+                row.set(entry.repo, count + age)
             }
-            for (index, view) in mergeRows.arrangedSubviews.enumerated() {
-                guard let row = view as? MergeRowView else { continue }
-                row.isHidden = index >= s.recentMerges.count
-                if index < s.recentMerges.count {
-                    let pr = s.recentMerges[index]
-                    let when = Calendar.current.isDateInToday(pr.mergedAt)
-                        ? timeOfDayFormatter.string(from: pr.mergedAt) : dayFormatter.string(from: pr.mergedAt)
-                    row.configure(when: when, repo: "\(pr.repo) #\(pr.number) → \(pr.base)", title: pr.title)
-                }
+            mergeRows.showRows(s.recentMerges) { (row: MergeRowView, pr) in
+                let when = Calendar.current.isDateInToday(pr.mergedAt)
+                    ? timeOfDayFormatter.string(from: pr.mergedAt) : self.dayFormatter.string(from: pr.mergedAt)
+                row.configure(when: when, repo: "\(pr.repo) #\(pr.number) → \(pr.base)", title: pr.title)
             }
         } else {
             heroLabel.set(lastError?.localizedDescription ?? "loading…")
@@ -183,13 +156,6 @@ final class GitHubPageViewController: DashboardPageViewController {
         if stale, let age = age { alerts.append(PageAlert("GitHub data", "\(durationText(age)) old")) }
         if tooManyOpen, let s = snapshot { alerts.append(PageAlert("Open pull requests", "\(s.openCount)")) }
         self.alerts = alerts
-    }
-
-    private func sectionHeading(_ text: String) -> SpacedLabel {
-        let label = SpacedLabel(font: font(28, .bold), kern: 1, uppercase: true, alpha: 0.6)
-        label.textAlignment = .left
-        label.set(text)
-        return label
     }
 
 }

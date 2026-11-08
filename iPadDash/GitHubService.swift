@@ -34,22 +34,10 @@ final class GitHubService {
         guard token != nil else { return completion(.failure(ServiceError.missing("GitHub token"))) }
         let now = Date()
         var snapshot = GitHubSnapshot()
-        var firstError: Error?
-        let group = DispatchGroup()
-
-        func collect<T>(_ apply: @escaping (T) -> Void) -> (Result<T, Error>) -> Void {
-            group.enter()
-            return { result in
-                switch result {
-                case .success(let value): apply(value)
-                case .failure(let error): firstError = firstError ?? error
-                }
-                group.leave()
-            }
-        }
+        let group = FetchGroup()
 
         func search(_ query: String, perPage: Int, _ apply: @escaping (Int, [[String: Any]]) -> Void) {
-            self.search(query, perPage: perPage, completion: collect { apply($0.0, $0.1) })
+            self.search(query, perPage: perPage, completion: group.collect { apply($0.0, $0.1) })
         }
 
         search("is:pr is:open archived:false user:\(owner) created:<=\(isoDateTime(now.addingTimeInterval(-openPRMinAge)))",
@@ -75,7 +63,7 @@ final class GitHubService {
         // Sorted by last update, which for merged PRs is (nearly always) the merge;
         // re-sorted by merge time below.
         let query = "is:pr is:merged user:\(owner) merged:>=\(isoDateTime(now.addingTimeInterval(-30 * 86400))) sort:updated-desc"
-        graphQLSearch(query, first: 50, completion: collect { (total: Int, nodes: [[String: Any]]) in
+        graphQLSearch(query, first: 50, completion: group.collect { (total: Int, nodes: [[String: Any]]) in
             snapshot.merged30d = total
             snapshot.recentMerges = nodes.compactMap { node -> MergedPR? in
                 guard let merged = parseDate(node["mergedAt"]),
@@ -86,8 +74,8 @@ final class GitHubService {
             }.sorted { $0.mergedAt > $1.mergedAt }
         })
 
-        group.notify(queue: .main) {
-            if let error = firstError {
+        group.notify {
+            if let error = group.firstError {
                 completion(.failure(error))
             } else {
                 completion(.success(snapshot))
@@ -126,11 +114,8 @@ final class GitHubService {
 
     private func search(_ query: String, perPage: Int,
                         completion: @escaping (Result<(Int, [[String: Any]]), Error>) -> Void) {
-        var components = URLComponents(string: "https://api.github.com/search/issues")!
-        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "per_page", value: String(perPage))]
-        // "+" in the ISO time zone would otherwise read as a space.
-        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        var request = URLRequest(url: components.url!)
+        var request = URLRequest(url: url(URL(string: "https://api.github.com/search/issues")!,
+                                          query: ["q": query, "per_page": String(perPage)]))
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")

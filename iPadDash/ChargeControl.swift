@@ -136,26 +136,61 @@ final class ChargeControl {
         settingsChanged()
     }
 
-    /// Red items for the summary page and the footer.
+    /// Battery level in whole percent.
+    var batteryPercent: Int? {
+        return batteryLevel.map { Int(($0 * 100).rounded()) }
+    }
+
+    /// Below `lowBelow` and off power.
+    var isLow: Bool {
+        guard let level = batteryLevel else { return false }
+        return level < ChargeControl.lowBelow && !isPowered
+    }
+
+    /// How long the plug hasn't answered, once that is 15 minutes or more.
+    var plugUnreachableFor: TimeInterval? {
+        guard let since = failingSince else { return nil }
+        let duration = Date().timeIntervalSince(since)
+        return duration >= 15 * 60 ? duration : nil
+    }
+
+    /// The plug has been on for 10 minutes and the iPad still gets no power.
+    var notCharging: Bool {
+        guard plugOn == true, !isPowered, let since = plugOnSince else { return false }
+        return Date().timeIntervalSince(since) >= 10 * 60
+    }
+
+    /// Red items for the summary page and the Network & Battery page.
     var alerts: [PageAlert] {
         var items: [PageAlert] = []
-        let now = Date()
-        if let level = batteryLevel, level < ChargeControl.lowBelow, !isPowered {
-            items.append(PageAlert("Battery low", "\(Int((level * 100).rounded()))%"))
+        if isLow, let percent = batteryPercent { items.append(PageAlert("Battery low", "\(percent)%")) }
+        if let duration = plugUnreachableFor {
+            items.append(PageAlert("Charging plug", "unreachable · \(durationText(duration))"))
         }
-        if let since = failingSince, now.timeIntervalSince(since) >= 15 * 60 {
-            items.append(PageAlert("Charging plug", "unreachable · \(durationText(now.timeIntervalSince(since)))"))
-        }
-        if plugOn == true, !isPowered, let since = plugOnSince, now.timeIntervalSince(since) >= 10 * 60 {
-            items.append(PageAlert("Not charging", "plug is on"))
-        }
+        if notCharging { items.append(PageAlert("Not charging", "plug is on")) }
         return items
     }
 
-    /// "76% charging" for the footer.
+    /// "Battery 76% charging".
     var batteryText: String? {
-        guard let level = batteryLevel else { return nil }
-        return "\(Int((level * 100).rounded()))% " + (isPowered ? "charging" : "on battery")
+        guard let percent = batteryPercent else { return nil }
+        return "Battery \(percent)% " + (isPowered ? "charging" : "on battery")
+    }
+
+    /// "on · checked 9:41 AM", "off · unreachable", "contacting…"; with
+    /// `showingError`, the error itself instead of "unreachable".
+    func plugStatusText(showingError: Bool = false) -> String {
+        guard isOn else { return "not set up" }
+        var parts: [String] = []
+        if let on = plugOn { parts.append(on ? "on" : "off") }
+        if let error = lastError {
+            parts.append(showingError ? error : "unreachable")
+        } else if let contact = lastContact {
+            parts.append("checked \(timeOfDayFormatter.string(from: contact))")
+        } else {
+            parts.append("contacting…")
+        }
+        return parts.joined(separator: " · ")
     }
 
     @objc private func batteryChanged() {

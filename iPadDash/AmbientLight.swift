@@ -28,7 +28,10 @@ final class AmbientLight {
     private let settleTime: TimeInterval = 1.2
 
     private let queue = DispatchQueue(label: "AmbientLight")
+    // Used on `queue` only.
     private var session: AVCaptureSession?
+    private var camera: AVCaptureDevice?
+    private var sampling = false
     private var timer: Timer?
 
     var isOn: Bool { return Settings.ambientInterval > 0 }
@@ -67,11 +70,13 @@ final class AmbientLight {
         }
     }
 
-    private func runSession() {
-        guard session == nil else { return }
+    /// Built once, on `queue`, and only started and stopped for each sample.
+    private func makeSession() -> (AVCaptureSession, AVCaptureDevice)? {
+        if let session = session, let camera = camera { return (session, camera) }
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let input = try? AVCaptureDeviceInput(device: camera) else {
-            return DispatchQueue.main.async { self.fail("no front camera") }
+            DispatchQueue.main.async { self.fail("no front camera") }
+            return nil
         }
         let session = AVCaptureSession()
         session.sessionPreset = .low
@@ -79,11 +84,19 @@ final class AmbientLight {
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
         guard session.canAddInput(input), session.canAddOutput(output) else {
-            return DispatchQueue.main.async { self.fail("camera unavailable") }
+            DispatchQueue.main.async { self.fail("camera unavailable") }
+            return nil
         }
         session.addInput(input)
         session.addOutput(output)
         self.session = session
+        self.camera = camera
+        return (session, camera)
+    }
+
+    private func runSession() {
+        guard !sampling, let (session, camera) = makeSession() else { return }
+        sampling = true
         session.startRunning()
 
         queue.asyncAfter(deadline: .now() + settleTime) {
@@ -92,7 +105,7 @@ final class AmbientLight {
             let iso = Double(camera.iso)
             let aperture = Double(camera.lensAperture)
             session.stopRunning()
-            self.session = nil
+            self.sampling = false
             DispatchQueue.main.async {
                 guard duration > 0, iso > 0, aperture > 0 else { return self.fail("no exposure data") }
                 // Exposure value at ISO 100, then illuminance (incident-light constant ~250).

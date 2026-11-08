@@ -1,6 +1,6 @@
 import UIKit
 
-/// Page 1: the TRMNL "Steps & Claude" design in the top half (steps panel |
+/// The TRMNL "Steps & Claude" design in the top half (steps panel |
 /// divider | Claude panel, title bar below). The bottom half is reserved.
 final class StepsClaudePageViewController: DashboardPageViewController {
     // Pace depends on the clock, so re-evaluate between fetches too.
@@ -19,28 +19,13 @@ final class StepsClaudePageViewController: DashboardPageViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        let divider = InkView()
-        let columns = UIStackView(arrangedSubviews: [stepsPanel, divider, claudePanel])
-        columns.alignment = .fill
-        divider.widthAnchor.constraint(equalToConstant: 2).isActive = true
-        stepsPanel.widthAnchor.constraint(equalTo: claudePanel.widthAnchor).isActive = true
-
         // TRMNL's title bar: plugin name on the left, last update on the right.
-        let (rule, titleBar) = addTitleBar("Steps & Claude")
+        let (rule, _) = addPanels(stepsPanel, claudePanel, title: "Steps & Claude")
         let reserved = ReservedAreaView(text: "Lower half · reserved")
-
-        for v in [columns, reserved] as [UIView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(v)
-        }
+        reserved.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(reserved)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            columns.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
-            columns.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
-            columns.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
-            rule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
-            // The design ends at the middle of the screen.
-            titleBar.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -8),
             reserved.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 16),
             reserved.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
             reserved.trailingAnchor.constraint(equalTo: rule.trailingAnchor),

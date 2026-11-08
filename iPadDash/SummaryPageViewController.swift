@@ -2,10 +2,10 @@ import UIKit
 
 /// The optional home page (Settings.summaryPage): everything the other pages draw
 /// in red, at most five, in the style of the GitHub page; below it a large clock,
-/// the date, and the temperature for the next nine hours where the iPad is.
+/// the date, and the temperature for the next eight hours where the iPad is.
 final class SummaryPageViewController: DashboardPageViewController {
     override var fixedFetchInterval: TimeInterval? { return 30 * 60 }   // weather
-    override var redrawInterval: TimeInterval? { return 1 }             // clock
+    override var redrawInterval: TimeInterval? { return 30 }            // ages and durations
     private let maxRows = 5
 
     /// The pages whose red items are listed; set by the root.
@@ -18,7 +18,6 @@ final class SummaryPageViewController: DashboardPageViewController {
     private var forecast: WeatherForecast?
     private var lastError: Error?
 
-    private let heroLabel = SpacedLabel(font: font(36, .heavy))
     /// "Steps & Claude · Cluster · …": each name leads to its page, and turns red
     /// while that page has red items.
     private let sourceNames = UIStackView()
@@ -45,15 +44,12 @@ final class SummaryPageViewController: DashboardPageViewController {
     private let lower = UIStackView()
     private let lowerArea = UIView()
     private var fitting = false
-    private let timeFormatter = SummaryPageViewController.formatter("h:mm")
-    private let dateFormatter = SummaryPageViewController.formatter("EEEE, MMMM d")
-    private let hourFormatter = SummaryPageViewController.formatter("h a")
+    private let timeFormatter = makeDateFormatter("h:mm")
+    private let dateFormatter = makeDateFormatter("EEEE, MMMM d")
+    private let hourFormatter = makeDateFormatter("h a")
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let title = SpacedLabel(font: font(26, .bold), kern: 2)
-        title.set("SUMMARY")
-
         alertRows.axis = .vertical
         alertRows.spacing = 10
         for _ in 0..<maxRows {
@@ -86,21 +82,15 @@ final class SummaryPageViewController: DashboardPageViewController {
         lowerArea.addSubview(lower)
 
         let (rule, titleBar) = addTitleBar("Summary")
+        addHeader("Summary", subtitle: sourceNames, subtitleSpacing: -2)
 
-        for v in [title, heroLabel, sourceNames, alertHeading, alertRows, lowerArea] as [UIView] {
+        for v in [alertHeading, alertRows, lowerArea] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
         let guide = view.safeAreaLayoutGuide
         let side: CGFloat = 24
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
-            title.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            heroLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            heroLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            sourceNames.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: -2),
-            sourceNames.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-
             alertHeading.topAnchor.constraint(equalTo: sourceNames.bottomAnchor, constant: 24),
             alertHeading.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
             alertRows.topAnchor.constraint(equalTo: alertHeading.bottomAnchor, constant: 14),
@@ -118,8 +108,11 @@ final class SummaryPageViewController: DashboardPageViewController {
             titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
-        NotificationCenter.default.addObserver(self, selector: #selector(alertsChanged),
-                                               name: pageAlertDidChange, object: nil)
+        for name in [pageAlertDidChange, Connectivity.didChange] {
+            NotificationCenter.default.addObserver(self, selector: #selector(alertsChanged), name: name, object: nil)
+        }
+        // The clock alone, every second; the rest on changes and every 30 s.
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateClock(Date()) }
         startFetching()
     }
 
@@ -140,6 +133,11 @@ final class SummaryPageViewController: DashboardPageViewController {
             }
             completion()
         }
+    }
+
+    private func updateClock(_ now: Date) {
+        timeLabel.set(timeFormatter.string(from: now))
+        dateLabel.set(dateFormatter.string(from: now))
     }
 
     @objc private func alertsChanged() {
@@ -166,9 +164,10 @@ final class SummaryPageViewController: DashboardPageViewController {
             // A page that joins the rotation only when red is named only then.
             label.superview?.isHidden = page.onlyWhenRed && !red
             dot?.isHidden = page.onlyWhenRed && !red
-            label.alert = red
-            label.alphaOfInk = red ? 1 : 0.6
-            label.refresh()
+            if label.alert != red {
+                label.alphaOfInk = red ? 1 : 0.6
+                label.alert = red   // redraws
+            }
         }
         alertHeading.isHidden = items.isEmpty
         alertRows.isHidden = items.isEmpty
@@ -178,19 +177,15 @@ final class SummaryPageViewController: DashboardPageViewController {
         on.isActive = true
         let rows = alertRows.arrangedSubviews.compactMap { $0 as? KeyValueRow }
         rowTargets = rows.indices.map { $0 < items.count ? items[$0].page : nil }
-        for (index, row) in rows.enumerated() {
-            row.isHidden = index >= items.count
-            row.gestureRecognizers?.forEach { $0.isEnabled = rowTargets[index] != nil }
-            if index < items.count { row.set(items[index].alert.what, items[index].alert.detail, alert: true) }
-        }
+        for (row, target) in zip(rows, rowTargets) { row.gestureRecognizers?.forEach { $0.isEnabled = target != nil } }
+        alertRows.showRows(items) { (row: KeyValueRow, item) in row.set(item.alert.what, item.alert.detail, alert: true) }
         moreLabel.set(items.count > maxRows ? "+ \(items.count - maxRows) more · tap a name above to see its page" : "")
         moreLabel.isHidden = items.count <= maxRows
 
-        timeLabel.set(timeFormatter.string(from: now))
-        dateLabel.set(dateFormatter.string(from: now))
+        updateClock(now)
 
         let place = forecast?.place.map { " · \($0)" } ?? ""
-        weatherHeading.set("Weather\(place) · next \(SummaryPageViewController.hours) hours, °C")
+        weatherHeading.set("Weather\(place) · next \(SummaryPageViewController.hours - 1) hours, °C")
         // Hours already past drop off between fetches.
         let upcoming = (forecast?.hours ?? []).filter { $0.time > now.addingTimeInterval(-3600) }
         for (index, view) in hourColumns.arrangedSubviews.enumerated() {
@@ -297,19 +292,6 @@ final class SummaryPageViewController: DashboardPageViewController {
         openPage?(entry.page)
     }
 
-    private func sectionHeading(_ text: String) -> SpacedLabel {
-        let label = SpacedLabel(font: font(28, .bold), kern: 1, uppercase: true, alpha: 0.6)
-        label.textAlignment = .left
-        label.set(text)
-        return label
-    }
-
-    private static func formatter(_ format: String) -> DateFormatter {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
-        f.dateFormat = format
-        return f
-    }
 }
 
 /// One hour of the forecast: "2 PM" over "14°".
@@ -327,14 +309,7 @@ final class HourColumnView: UIView {
         let stack = UIStackView(arrangedSubviews: [hourLabel, tempLabel])
         stack.axis = .vertical
         stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
+        addFilling(stack)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -448,7 +423,7 @@ final class TemperatureGraphView: UIView {
     /// The dark theme dims its ink in a dark room; the graph follows.
     private static func dimmed(_ color: UIColor) -> UIColor {
         guard Theme.isDark else { return color }
-        let level = (0.45 + 0.37 * AmbientLight.shared.level) / 0.82
+        let level = darkInkWhite / darkInkFull
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.getRed(&r, green: &g, blue: &b, alpha: &a)
         return UIColor(red: r * level, green: g * level, blue: b * level, alpha: a)

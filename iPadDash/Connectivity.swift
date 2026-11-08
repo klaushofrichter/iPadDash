@@ -61,6 +61,38 @@ func fetchJSON(_ request: URLRequest, errorKey: String? = nil,
     }.resume()
 }
 
+/// A URL with these query items, with "+" encoded too: URLComponents leaves it
+/// alone, and servers read it as a space (an ISO time zone, a PromQL sum).
+func url(_ base: URL, query: [String: String]) -> URL {
+    var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+    components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+    components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+    return components.url!
+}
+
+/// Requests run in parallel: `collect` wraps each completion, `notify` runs on the
+/// main queue once all are done. Completions arrive on the main queue (`fetchJSON`).
+final class FetchGroup {
+    private let group = DispatchGroup()
+    private(set) var successes = 0
+    private(set) var firstError: Error?
+
+    func collect<T>(_ apply: @escaping (T) -> Void) -> (Result<T, Error>) -> Void {
+        group.enter()
+        return { result in
+            switch result {
+            case .success(let value): apply(value); self.successes += 1
+            case .failure(let error): self.firstError = self.firstError ?? error
+            }
+            self.group.leave()
+        }
+    }
+
+    func notify(_ done: @escaping () -> Void) {
+        group.notify(queue: .main, execute: done)
+    }
+}
+
 /// Whether the app can reach anything, judged from the pages' own fetches: any
 /// HTTP response (even an error status) proves the network works, so one service
 /// being down doesn't count. iOS also says when there is no connection at all
@@ -74,19 +106,22 @@ final class Connectivity {
     static let noConnectionAlertAfter: TimeInterval = 2 * 60
 
     private let monitor = NWPathMonitor()
+    /// How iOS says the iPad is connected; nil until the first update.
+    private(set) var path: NWPath?
     /// When iOS last went from a connection to none.
     private var noConnectionSince: Date?
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async { self?.pathChanged(connected: path.status == .satisfied) }
+            DispatchQueue.main.async { self?.pathChanged(path) }
         }
         monitor.start(queue: DispatchQueue(label: "Connectivity"))
     }
 
-    private func pathChanged(connected: Bool) {
-        guard connected == (noConnectionSince != nil) else { return }
-        noConnectionSince = connected ? nil : Date()
+    private func pathChanged(_ path: NWPath) {
+        self.path = path
+        let connected = path.status == .satisfied
+        if connected == (noConnectionSince != nil) { noConnectionSince = connected ? nil : Date() }
         NotificationCenter.default.post(name: Connectivity.didChange, object: nil)
     }
 
@@ -99,6 +134,11 @@ final class Connectivity {
                       noConnectionSince.map { ($0, Connectivity.noConnectionAlertAfter) }].compactMap { $0 }
         guard starts.contains(where: { now.timeIntervalSince($0.0) >= $0.1 }) else { return nil }
         return starts.map { now.timeIntervalSince($0.0) }.max()
+    }
+
+    /// "No network" · "25 minutes" during an outage.
+    var outageAlert: PageAlert? {
+        return outage.map { PageAlert("No network", durationText($0)) }
     }
 
     /// When requests started failing with no response from anywhere in between.

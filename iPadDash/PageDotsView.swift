@@ -5,8 +5,8 @@ import UIKit
 /// Other pages: faint ink, or a muted darker red if they have red markup.
 final class PageDotsView: UIView {
     var numberOfPages = 0 { didSet { invalidateIntrinsicContentSize(); setNeedsDisplay() } }
-    var currentPage = 0 { didSet { setNeedsDisplay() } }
-    var alerts: [Bool] = [] { didSet { setNeedsDisplay() } }
+    var currentPage = 0 { didSet { if currentPage != oldValue { setNeedsDisplay() } } }
+    var alerts: [Bool] = [] { didSet { if alerts != oldValue { setNeedsDisplay() } } }
 
     private let diameter: CGFloat = 11
     private let spacing: CGFloat = 14

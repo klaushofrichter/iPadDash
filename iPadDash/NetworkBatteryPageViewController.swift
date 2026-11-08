@@ -5,12 +5,13 @@ import UIKit
 
 /// The battery level over the last day, sampled every few minutes and kept across
 /// launches.
-final class BatteryHistory {
+final class BatteryHistory: NSObject {
     static let shared = BatteryHistory()
     static let span: TimeInterval = 24 * 3600
     private let interval: TimeInterval = 5 * 60
     private let key = "batteryHistory"
     private var timer: Timer?
+    private var lastSaved: Date?
     /// Oldest first; level in percent.
     private(set) var samples: [(Date, Double)] = []
 
@@ -30,13 +31,25 @@ final class BatteryHistory {
         #endif
         record()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in self?.record() }
+        for name in [UIApplication.willResignActiveNotification, UIApplication.willTerminateNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(save), name: name, object: nil)
+        }
     }
 
     private func record() {
         guard let level = ChargeControl.shared.batteryLevel else { return }
         let now = Date()
         samples.append((now, Double(level) * 100))
-        samples.removeAll { now.timeIntervalSince($0.0) > BatteryHistory.span }
+        // Oldest first, so only the front ages out.
+        if let keep = samples.firstIndex(where: { now.timeIntervalSince($0.0) <= BatteryHistory.span }), keep > 0 {
+            samples.removeFirst(keep)
+        }
+        // Written hourly (and when the app leaves the foreground), not every sample.
+        if lastSaved.map({ now.timeIntervalSince($0) >= 3600 }) ?? true { save() }
+    }
+
+    @objc private func save() {
+        lastSaved = Date()
         UserDefaults.standard.set(samples.map { [$0.0.timeIntervalSince1970, $0.1] }, forKey: key)
     }
 }
@@ -49,8 +62,6 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
     override var fixedFetchInterval: TimeInterval? { return 60 }
     override var redrawInterval: TimeInterval? { return 30 }
 
-    private let heroLabel = SpacedLabel(font: font(36, .heavy))
-    private let summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
     private let batteryIcon = BatteryIconView()
     private let levelLabel = SpacedLabel(font: font(44, .semibold))
     private let stateLabel = SpacedLabel(font: font(28), alpha: 0.7)
@@ -63,15 +74,11 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
     private let addressRow = KeyValueRow(size: 28)
     private let responseRow = KeyValueRow(size: 28)
 
-    private let monitor = NWPathMonitor()
-    private var path: NWPath?
     private var ssid: String?
     private var address: String?
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let title = SpacedLabel(font: font(26, .bold), kern: 2)
-        title.set("NETWORK & BATTERY")
         graph.limit = Double(ChargeControl.lowBelow * 100)
         graph.showsScale = true
         graph.redBelowLimit = true
@@ -83,8 +90,8 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         indicator.setCustomSpacing(12, after: levelLabel)
 
         let stack = UIStackView(arrangedSubviews: [
-            heading("Battery"), indicator, plugRow, graphCaption, graph,
-            heading("Network"), statusRow, connectionRow, wifiRow, addressRow, responseRow,
+            sectionHeading("Battery", size: 22), indicator, plugRow, graphCaption, graph,
+            sectionHeading("Network", size: 22), statusRow, connectionRow, wifiRow, addressRow, responseRow,
         ])
         stack.axis = .vertical
         stack.spacing = 12
@@ -93,19 +100,12 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         stack.setCustomSpacing(40, after: graph)
 
         let (rule, titleBar) = addTitleBar("Network & Battery")
-        for v in [title, heroLabel, summaryLabel, stack] as [UIView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(v)
-        }
+        let header = addHeader("Network & Battery")
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
-            title.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            heroLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            heroLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            summaryLabel.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: 6),
-            summaryLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.topAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 32),
+            stack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 32),
             stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: rule.topAnchor, constant: -16),
@@ -115,22 +115,14 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
             titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
-        monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                self?.path = path
-                self?.readInterface()
-                self?.render()
-            }
-        }
-        monitor.start(queue: DispatchQueue(label: "NetworkBatteryPage"))
         let center = NotificationCenter.default
-        for name in [ChargeControl.didChange, Connectivity.didChange] {
-            center.addObserver(self, selector: #selector(changed), name: name, object: nil)
-        }
+        center.addObserver(self, selector: #selector(render), name: ChargeControl.didChange, object: nil)
+        center.addObserver(self, selector: #selector(connectivityChanged), name: Connectivity.didChange, object: nil)
         startFetching()
     }
 
-    @objc private func changed() {
+    @objc private func connectivityChanged() {
+        readInterface()
         render()
     }
 
@@ -180,12 +172,9 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         guard isViewLoaded else { return }
         let now = Date()
         let charge = ChargeControl.shared
-        let chargeAlerts = charge.alerts
-        var alerts = chargeAlerts
-        var offlineText: String?
-        if let offline = Connectivity.shared.offlineDuration { offlineText = durationText(offline) }
-        if let outage = Connectivity.shared.outage { alerts.insert(PageAlert("No network", durationText(outage)), at: 0) }
-        let networkRed = alerts.count > chargeAlerts.count
+        let network = Connectivity.shared
+        let networkRed = network.outage != nil
+        let alerts = [network.outageAlert].compactMap { $0 } + charge.alerts
 
         // Headline and one-line summary.
         if alerts.isEmpty {
@@ -197,21 +186,19 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         }
         heroLabel.alert = !alerts.isEmpty
         var summary: [String] = []
-        if let battery = charge.batteryText { summary.append("Battery \(battery)") }
+        if let battery = charge.batteryText { summary.append(battery) }
         summary.append(ssid.map { "Wi-Fi \($0)" } ?? connectionText)
         summaryLabel.set(summary.joined(separator: " · "))
 
         // Battery.
-        let low = chargeAlerts.contains { $0.what == "Battery low" }
-        let notCharging = chargeAlerts.contains { $0.what == "Not charging" }
-        levelLabel.set(charge.batteryLevel.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")
-        levelLabel.alert = low
+        levelLabel.set(charge.batteryPercent.map { "\($0)%" } ?? "–")
+        levelLabel.alert = charge.isLow
         stateLabel.set(batteryStateText)
-        stateLabel.alert = notCharging
+        stateLabel.alert = charge.notCharging
         batteryIcon.level = charge.batteryLevel.map(CGFloat.init)
         batteryIcon.charging = charge.isPowered
-        batteryIcon.alert = low
-        plugRow.set("Charging plug", plugText, alert: chargeAlerts.contains { $0.what == "Charging plug" })
+        batteryIcon.alert = charge.isLow
+        plugRow.set("Charging plug", charge.plugStatusText(), alert: charge.plugUnreachableFor != nil)
         let levels = BatteryHistory.shared.samples.filter { now.timeIntervalSince($0.0) <= BatteryHistory.span }.map { $0.1 }
         if let min = levels.min(), let max = levels.max() {
             graphCaption.set("Last 24 hours", "low \(Int(min.rounded()))% · high \(Int(max.rounded()))%")
@@ -221,23 +208,23 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         graph.points = BatteryHistory.shared.samples
 
         // Network.
-        if let offline = offlineText {
-            statusRow.set("Internet", "no response for \(offline)", alert: networkRed)
+        if let offline = network.offlineDuration {
+            statusRow.set("Internet", "no response for \(durationText(offline))", alert: networkRed)
         } else {
             statusRow.set("Internet", "online")
         }
-        connectionRow.set("Connection", connectionText, alert: path?.status == .unsatisfied && networkRed)
-        wifiRow.set("Wi-Fi network", ssid ?? (path?.usesInterfaceType(.wifi) == true ? "name not available" : "none"))
+        connectionRow.set("Connection", connectionText, alert: network.path?.status == .unsatisfied && networkRed)
+        wifiRow.set("Wi-Fi network", ssid ?? (network.path?.usesInterfaceType(.wifi) == true ? "name not available" : "none"))
         addressRow.set("IP address", address ?? "none")
         responseRow.set("Last server response",
-                        Connectivity.shared.lastResponse.map { timeOfDayFormatter.string(from: $0) } ?? "none yet")
+                        network.lastResponse.map { timeOfDayFormatter.string(from: $0) } ?? "none yet")
 
         instanceLabel.set(UIDevice.current.name)
         self.alerts = alerts
     }
 
     private var connectionText: String {
-        guard let path = path else { return "checking…" }
+        guard let path = Connectivity.shared.path else { return "checking…" }
         guard path.status == .satisfied else { return "no connection" }
         if path.usesInterfaceType(.wifi) { return "Wi-Fi" }
         if path.usesInterfaceType(.wiredEthernet) { return "wired" }
@@ -254,47 +241,23 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         }
     }
 
-    private var plugText: String {
-        let charge = ChargeControl.shared
-        guard charge.isOn else { return "not set up" }
-        var parts: [String] = []
-        if let on = charge.plugOn { parts.append(on ? "on" : "off") }
-        if charge.lastError != nil {
-            parts.append("unreachable")
-        } else if let contact = charge.lastContact {
-            parts.append("checked \(timeOfDayFormatter.string(from: contact))")
-        } else {
-            parts.append("contacting…")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func heading(_ text: String) -> SpacedLabel {
-        let label = SpacedLabel(font: font(22, .bold), kern: 1, uppercase: true, alpha: 0.6)
-        label.textAlignment = .left
-        label.set(text)
-        return label
-    }
 }
 
 /// A battery outline filled to the level, with a lightning bolt while power is
 /// connected. Drawn, since SF Symbols need iOS 13.
 final class BatteryIconView: UIView {
-    var level: CGFloat? { didSet { setNeedsDisplay() } }
-    var charging = false { didSet { setNeedsDisplay() } }
-    var alert = false { didSet { setNeedsDisplay() } }
+    var level: CGFloat? { didSet { if level != oldValue { setNeedsDisplay() } } }
+    var charging = false { didSet { if charging != oldValue { setNeedsDisplay() } } }
+    var alert = false { didSet { if alert != oldValue { setNeedsDisplay() } } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false
         backgroundColor = .clear
         contentMode = .redraw
-        NotificationCenter.default.addObserver(self, selector: #selector(redraw), name: Theme.didChange, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    @objc private func redraw() { setNeedsDisplay() }
 
     override func draw(_ rect: CGRect) {
         let nubWidth: CGFloat = 6, line: CGFloat = 3

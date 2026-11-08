@@ -25,12 +25,15 @@ struct PageAlert: Equatable {
     }
 }
 
-let timeOfDayFormatter: DateFormatter = {
+/// A US-English formatter for a fixed date format.
+func makeDateFormatter(_ format: String) -> DateFormatter {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US")
-    f.dateFormat = "h:mm a"
+    f.dateFormat = format
     return f
-}()
+}
+
+let timeOfDayFormatter = makeDateFormatter("h:mm a")
 
 /// A swipeable dashboard page: fetches on a timer and on demand, and shows the
 /// result under a title bar. Subclasses build their views, call `startFetching()`
@@ -54,6 +57,8 @@ class DashboardPageViewController: UIViewController {
     /// When the last attempt finished, successful or not.
     private(set) var lastFetch: Date?
     private var fetchTimer: Timer?
+    /// Set once the page shows `showStatus` in its title bar (so "refreshing…" fits there).
+    private var usesStatusLine = false
 
     /// Set by a page that ignores the update interval setting.
     var fixedFetchInterval: TimeInterval? { return nil }
@@ -62,7 +67,7 @@ class DashboardPageViewController: UIViewController {
 
     /// Fetch and store the page's data, then call `completion` on the main queue.
     func load(completion: @escaping () -> Void) { completion() }
-    func render() {}
+    @objc func render() {}
 
     override func loadView() {
         view = PaperView()
@@ -70,7 +75,7 @@ class DashboardPageViewController: UIViewController {
 
     func startFetching() {
         if fixedFetchInterval == nil {
-            NotificationCenter.default.addObserver(self, selector: #selector(startFetchTimer),
+            NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),
                                                    name: Settings.didChange, object: nil)
         }
         if let interval = redrawInterval {
@@ -101,7 +106,12 @@ class DashboardPageViewController: UIViewController {
         startFetchTimer()
     }
 
-    @objc private func startFetchTimer() {
+    /// Any setting changed; only a new update interval restarts the timer.
+    @objc private func settingsChanged() {
+        if fetchTimer?.timeInterval != Settings.refreshInterval { startFetchTimer() }
+    }
+
+    private func startFetchTimer() {
         fetchTimer?.invalidate()
         fetchTimer = Timer.scheduledTimer(withTimeInterval: fixedFetchInterval ?? Settings.refreshInterval,
                                           repeats: true) { [weak self] _ in
@@ -112,12 +122,68 @@ class DashboardPageViewController: UIViewController {
     private func fetch() {
         guard !fetching else { return }
         fetching = true
-        render()
+        // A full render only the first time ("loading…"); after that just the status line.
+        if lastFetch == nil {
+            render()
+        } else if usesStatusLine {
+            instanceLabel.set("refreshing…")
+        }
         load {
             self.fetching = false
             self.lastFetch = Date()
             self.render()
         }
+    }
+
+    /// The headline under the page title, and the dimmed line under it (see `addHeader`).
+    private(set) lazy var heroLabel = SpacedLabel(font: font(36, .heavy))
+    private(set) lazy var summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
+
+    /// Adds the page title ("GITHUB") centered at the top, `heroLabel` under it, and
+    /// under that `subtitle` (`summaryLabel` unless given). Returns the subtitle, for
+    /// the page's content to follow.
+    @discardableResult
+    func addHeader(_ title: String, subtitle: UIView? = nil, subtitleSpacing: CGFloat = 6) -> UIView {
+        let titleLabel = SpacedLabel(font: font(26, .bold), kern: 2, uppercase: true)
+        titleLabel.set(title)
+        let subtitle = subtitle ?? summaryLabel
+        for v in [titleLabel, heroLabel, subtitle] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(v)
+        }
+        let guide = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
+            titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            heroLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 14),
+            heroLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            heroLabel.leadingAnchor.constraint(greaterThanOrEqualTo: guide.leadingAnchor, constant: 24),
+            subtitle.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: subtitleSpacing),
+            subtitle.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        ])
+        return subtitle
+    }
+
+    /// The TRMNL-style top half: two equal panels with a divider between them and
+    /// the title bar below, ending at the middle of the screen.
+    func addPanels(_ left: UIView, _ right: UIView, title: String) -> (rule: UIView, bar: UIView) {
+        let divider = InkView()
+        let columns = UIStackView(arrangedSubviews: [left, divider, right])
+        columns.alignment = .fill
+        let (rule, bar) = addTitleBar(title)
+        columns.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(columns)
+        let guide = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            divider.widthAnchor.constraint(equalToConstant: 2),
+            left.widthAnchor.constraint(equalTo: right.widthAnchor),
+            columns.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
+            columns.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
+            columns.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
+            rule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
+            bar.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -8),
+        ])
+        return (rule, bar)
     }
 
     /// Adds the rule and the title bar (name on the left, `instanceLabel` on the
@@ -149,6 +215,7 @@ class DashboardPageViewController: UIViewController {
     /// "refreshing…", "fetch failed: … · updated …" over older data, or just `updated`
     /// (by default the time of the last attempt).
     func showStatus(error: Error?, hasData: Bool, updated: String? = nil) {
+        usesStatusLine = true
         let updated = updated ?? lastFetch.map { "updated \(timeOfDayFormatter.string(from: $0))" } ?? ""
         if fetching {
             instanceLabel.set("refreshing…")

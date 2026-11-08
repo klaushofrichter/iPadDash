@@ -172,19 +172,8 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
     @objc private func updateChargeStatus() {
         let charge = ChargeControl.shared
         var parts: [String] = []
-        if let battery = charge.batteryText { parts.append("Battery \(battery)") }
-        if charge.isOn {
-            if let on = charge.plugOn { parts.append("plug \(on ? "on" : "off")") }
-            if let error = charge.lastError {
-                parts.append("plug: \(error)")
-            } else if let contact = charge.lastContact {
-                parts.append("checked \(timeOfDayFormatter.string(from: contact))")
-            } else {
-                parts.append("contacting the plug…")
-            }
-        } else {
-            parts.append("off: the charger stays on")
-        }
+        if let battery = charge.batteryText { parts.append(battery) }
+        parts.append(charge.isOn ? "plug " + charge.plugStatusText(showingError: true) : "off: the charger stays on")
         parts += charge.alerts.map { "\($0.what) \($0.detail)" }
         chargeStatus.set(parts.joined(separator: " · "))
         chargeStatus.alert = !charge.alerts.isEmpty
@@ -192,9 +181,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
 
     private func section(_ heading: String, control: UIView? = nil, note: String? = nil,
                          lines: [String] = [], extra: UIView? = nil) -> UIView {
-        let headingLabel = SpacedLabel(font: font(14, .bold), kern: 1, uppercase: true, alpha: 0.6)
-        headingLabel.textAlignment = .left
-        headingLabel.set(heading)
+        let headingLabel = sectionHeading(heading, size: 14)
         var views: [UIView] = [headingLabel]
         if let control = control {
             control.heightAnchor.constraint(equalToConstant: 34).isActive = true

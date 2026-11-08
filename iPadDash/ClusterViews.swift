@@ -16,13 +16,8 @@ final class UsageBarView: UIView {
         let stack = UIStackView(arrangedSubviews: [head, bar])
         stack.axis = .vertical
         stack.spacing = 6 * scale
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        addFilling(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             bar.heightAnchor.constraint(equalToConstant: 20 * scale),
         ])
     }
@@ -58,14 +53,7 @@ final class KeyValueRow: UIView {
         valueLabel.lineBreakMode = .byTruncatingTail
         let row = UIStackView(arrangedSubviews: [keyLabel, valueLabel])
         row.spacing = 12
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
+        addFilling(row)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -132,14 +120,8 @@ final class ServicesPanelView: PanelView {
         heroLabel.set(total == 0 ? "n/a" : "\(total - down) / \(total) up")
         heroLabel.alert = down > 0
 
-        while list.arrangedSubviews.count < total { list.addArrangedSubview(KeyValueRow(size: 15)) }
-        for (index, view) in list.arrangedSubviews.enumerated() {
-            guard let row = view as? KeyValueRow else { continue }
-            row.isHidden = index >= total
-            if index < total {
-                let probe = snapshot.services[index]
-                row.set(probe.name, probe.up ? "up" : "down", alert: !probe.up)
-            }
+        list.showRows(snapshot.services, make: { KeyValueRow(size: 15) }) { row, probe in
+            row.set(probe.name, probe.up ? "up" : "down", alert: !probe.up)
         }
         freshnessLabel.set(down == 0 ? "all reachable" : "\(down) not reachable")
         freshnessLabel.alert = down > 0
@@ -148,14 +130,14 @@ final class ServicesPanelView: PanelView {
 
 /// 24-hour line graph, 0–100 %, with a hatched area, grid and a dashed limit line.
 final class LineGraphView: UIView {
-    var points: [(Date, Double)] = [] { didSet { setNeedsDisplay() } }
-    var alert = false { didSet { setNeedsDisplay() } }
+    var points: [(Date, Double)] = [] { didSet { if points.count != oldValue.count || points.last?.0 != oldValue.last?.0 || points.last?.1 != oldValue.last?.1 { setNeedsDisplay() } } }
+    var alert = false { didSet { if alert != oldValue { setNeedsDisplay() } } }
     /// The dashed red line, in percent.
-    var limit = ClusterLimits.usagePct { didSet { setNeedsDisplay() } }
+    var limit = ClusterLimits.usagePct { didSet { if limit != oldValue { setNeedsDisplay() } } }
     /// Labels the 0, 50 and 100 % lines and the limit, and draws the limit line solid red.
-    var showsScale = false { didSet { setNeedsDisplay() } }
+    var showsScale = false { didSet { if showsScale != oldValue { setNeedsDisplay() } } }
     /// Hatches the area red where the line is under the limit (battery).
-    var redBelowLimit = false { didSet { setNeedsDisplay() } }
+    var redBelowLimit = false { didSet { if redBelowLimit != oldValue { setNeedsDisplay() } } }
     let span: TimeInterval = 24 * 3600
 
     override init(frame: CGRect) {
@@ -245,13 +227,7 @@ final class LineGraphView: UIView {
             }
             ctx.setStrokeColor(color.cgColor)
             ctx.setLineWidth(1.5)
-            var x = plot.minX - plot.height
-            while x < plot.maxX {
-                ctx.move(to: CGPoint(x: x, y: plot.maxY))
-                ctx.addLine(to: CGPoint(x: x + plot.height, y: plot.minY))
-                x += 7
-            }
-            ctx.strokePath()
+            strokeHatching(ctx, in: plot, every: 7)
             ctx.restoreGState()
         }
         hatch(lineInk.withAlphaComponent(0.35), in: nil)
@@ -291,14 +267,7 @@ final class GraphBlockView: UIView {
         let stack = UIStackView(arrangedSubviews: [caption, graph])
         stack.axis = .vertical
         stack.spacing = 6
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
+        addFilling(stack)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

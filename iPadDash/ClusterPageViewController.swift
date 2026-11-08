@@ -1,6 +1,6 @@
 import UIKit
 
-/// Page 2: load and health of the k3s cluster "skylar-technology", from Grafana Cloud.
+/// Load and health of the k3s cluster "skylar-technology", from Grafana Cloud.
 /// Top half: LOAD | SERVICES panels. Bottom half: 24 h graphs and operations rows.
 final class ClusterPageViewController: DashboardPageViewController {
     private let service = ClusterService()
@@ -18,37 +18,20 @@ final class ClusterPageViewController: DashboardPageViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        let divider = InkView()
-        let columns = UIStackView(arrangedSubviews: [loadPanel, divider, servicesPanel])
-        columns.alignment = .fill
-        divider.widthAnchor.constraint(equalToConstant: 2).isActive = true
-        loadPanel.widthAnchor.constraint(equalTo: servicesPanel.widthAnchor).isActive = true
-
-        let opsHeading = SpacedLabel(font: font(14, .bold), kern: 1, uppercase: true, alpha: 0.6)
-        opsHeading.textAlignment = .left
-        opsHeading.set("Operations")
+        let opsHeading = sectionHeading("Operations", size: 14)
         let bottom = UIStackView(arrangedSubviews: [cpuGraph, memGraph, opsHeading, backupRow, certRow, cronRow])
         bottom.axis = .vertical
         bottom.spacing = 10
         bottom.setCustomSpacing(20, after: cpuGraph)
         bottom.setCustomSpacing(24, after: memGraph)
 
-        // Title bar like page 1: name on the left, last update on the right.
-        let (rule, titleBar) = addTitleBar("Cluster · skylar-technology")
-
-        for v in [columns, bottom] as [UIView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(v)
-        }
+        // Panels and title bar like the Steps & Claude page.
+        let (rule, _) = addPanels(loadPanel, servicesPanel, title: "Cluster · skylar-technology")
+        bottom.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottom)
         let guide = view.safeAreaLayoutGuide
         let graphHeight: CGFloat = 110
         NSLayoutConstraint.activate([
-            columns.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
-            columns.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
-            columns.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
-            rule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
-            // The panels end at the middle of the screen, as on page 1.
-            titleBar.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -8),
             bottom.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 20),
             bottom.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
             bottom.trailingAnchor.constraint(equalTo: rule.trailingAnchor),

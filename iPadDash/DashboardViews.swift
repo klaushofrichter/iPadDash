@@ -11,8 +11,11 @@ let scale: CGFloat = 0.96
 // In a dim room (ambient level < 1) the light theme's paper goes from white
 // toward darker grey, and the dark theme's ink dims.
 var ink: UIColor {
-    return Theme.isDark ? UIColor(white: 0.45 + 0.37 * AmbientLight.shared.level, alpha: 1) : .black
+    return Theme.isDark ? UIColor(white: darkInkWhite, alpha: 1) : .black
 }
+/// The dark theme's ink: 0.82 white in a lit room, down to 0.45 in the dark.
+let darkInkFull: CGFloat = 0.82
+var darkInkWhite: CGFloat { return 0.45 + (darkInkFull - 0.45) * AmbientLight.shared.level }
 var paper: UIColor {
     return Theme.isDark ? .black : UIColor(white: 0.45 + 0.55 * AmbientLight.shared.level, alpha: 1)
 }
@@ -22,6 +25,55 @@ var paper: UIColor {
 var alertInk: UIColor {
     return Theme.isDark ? UIColor(red: 1, green: 0.32, blue: 0.29, alpha: 1)
                         : UIColor(red: 0.84, green: 0.05, blue: 0.05, alpha: 1)
+}
+
+/// Strokes stripes running bottom-left to top-right across `rect`, `every` points
+/// apart horizontally, in the context's current stroke color and width.
+func strokeHatching(_ ctx: CGContext, in rect: CGRect, every period: CGFloat) {
+    var x = rect.minX - rect.height
+    while x < rect.maxX + rect.height {
+        ctx.move(to: CGPoint(x: x, y: rect.maxY))
+        ctx.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+        x += period
+    }
+    ctx.strokePath()
+}
+
+extension UIView {
+    /// Adds `subview` pinned to all four edges.
+    func addFilling(_ subview: UIView) {
+        subview.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(subview)
+        NSLayoutConstraint.activate([
+            subview.topAnchor.constraint(equalTo: topAnchor),
+            subview.bottomAnchor.constraint(equalTo: bottomAnchor),
+            subview.leadingAnchor.constraint(equalTo: leadingAnchor),
+            subview.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+}
+
+extension UIStackView {
+    /// One row of type `Row` per item, set up by `configure`; rows past the items are
+    /// hidden. With `make`, missing rows are added first.
+    func showRows<Row: UIView, Item>(_ items: [Item], make: (() -> Row)? = nil, configure: (Row, Item) -> Void) {
+        if let make = make {
+            let missing = items.count - arrangedSubviews.filter({ $0 is Row }).count
+            for _ in 0..<max(missing, 0) { addArrangedSubview(make()) }
+        }
+        for (index, row) in arrangedSubviews.compactMap({ $0 as? Row }).enumerated() {
+            row.isHidden = index >= items.count
+            if index < items.count { configure(row, items[index]) }
+        }
+    }
+}
+
+/// An uppercase, dimmed section heading, left-aligned.
+func sectionHeading(_ text: String, size: CGFloat = 28) -> SpacedLabel {
+    let label = SpacedLabel(font: font(size, .bold), kern: 1, uppercase: true, alpha: 0.6)
+    label.textAlignment = .left
+    label.set(text)
+    return label
 }
 
 /// Re-applies the current theme to a view tree: label colors, drawn views, ink fills.
@@ -136,8 +188,8 @@ final class SpacedLabel: UILabel {
 
 /// Two concentric rings: thin outer = pace, thick inner = actual (SVG viewBox 0 0 100 100).
 final class RingGaugeView: UIView {
-    var pacePct: Int = 0 { didSet { setNeedsDisplay() } }
-    var actualPct: Int = 0 { didSet { setNeedsDisplay() } }
+    var pacePct: Int = 0 { didSet { if pacePct != oldValue { setNeedsDisplay() } } }
+    var actualPct: Int = 0 { didSet { if actualPct != oldValue { setNeedsDisplay() } } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -179,8 +231,8 @@ final class RingGaugeView: UIView {
 
 /// Bordered bar with a diagonal-hatch fill (CSS repeating-linear-gradient 135deg).
 final class HatchedBarView: UIView {
-    var percent: Double = 0 { didSet { setNeedsDisplay() } }
-    var alert = false { didSet { setNeedsDisplay() } }
+    var percent: Double = 0 { didSet { if percent != oldValue { setNeedsDisplay() } } }
+    var alert = false { didSet { if alert != oldValue { setNeedsDisplay() } } }
     private let lineWidth: CGFloat
     private let gap: CGFloat
     private let fillAlpha: CGFloat
@@ -208,16 +260,10 @@ final class HatchedBarView: UIView {
         ctx.clip(to: CGRect(x: 0, y: 0, width: fillWidth, height: bounds.height))
         let barInk = alert ? alertInk : ink
         ctx.setStrokeColor(barInk.withAlphaComponent(fillAlpha).cgColor)
-        // Stripes running bottom-left to top-right; period measured perpendicular to them.
-        let period = (lineWidth + gap) * scale * sqrt(2)
+        // Period measured perpendicular to the stripes.
         ctx.setLineWidth(lineWidth * scale)
-        var x = -bounds.height
-        while x < fillWidth + bounds.height {
-            ctx.move(to: CGPoint(x: x, y: bounds.height))
-            ctx.addLine(to: CGPoint(x: x + bounds.height, y: 0))
-            x += period
-        }
-        ctx.strokePath()
+        strokeHatching(ctx, in: CGRect(x: 0, y: 0, width: fillWidth, height: bounds.height),
+                       every: (lineWidth + gap) * scale * sqrt(2))
         ctx.restoreGState()
 
         ctx.setStrokeColor(barInk.cgColor)
@@ -247,13 +293,8 @@ final class UsageMetricView: UIView {
         let stack = UIStackView(arrangedSubviews: [head, paceBar, actualBar, captionLabel])
         stack.axis = .vertical
         stack.spacing = 6 * scale
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        addFilling(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             paceBar.heightAnchor.constraint(equalToConstant: 20 * scale),
             actualBar.heightAnchor.constraint(equalToConstant: 20 * scale),
         ])

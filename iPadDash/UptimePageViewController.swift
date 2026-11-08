@@ -1,41 +1,30 @@
 import UIKit
 
-/// Page 3: UptimeRobot monitors, modeled on the public status page. A monitor
+/// UptimeRobot monitors, modeled on the public status page. A monitor
 /// that is down turns its row red; the headline turns red if any is down.
 final class UptimePageViewController: DashboardPageViewController {
     private let service = UptimeService()
     private var monitors: [UptimeMonitor]?
     private var lastError: Error?
 
-    private let heroLabel = SpacedLabel(font: font(36, .heavy))
-    private let summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
     private let list = UIStackView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let title = SpacedLabel(font: font(26, .bold), kern: 2)
-        title.set("UPTIME")
-
         list.axis = .vertical
         list.distribution = .fillEqually
         list.spacing = 8
 
         let (rule, titleBar) = addTitleBar("Uptime · UptimeRobot")
+        let header = addHeader("Uptime")
 
-        for v in [title, heroLabel, summaryLabel, list] as [UIView] {
+        for v in [list] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
-            title.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            heroLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            heroLabel.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
-            heroLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
-            summaryLabel.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: 6),
-            summaryLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            list.topAnchor.constraint(equalTo: summaryLabel.bottomAnchor, constant: 22),
+            list.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 22),
             list.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
             list.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
             rule.topAnchor.constraint(equalTo: list.bottomAnchor, constant: 16),
@@ -79,12 +68,7 @@ final class UptimePageViewController: DashboardPageViewController {
                                                          ratios.reduce(0, +) / Double(ratios.count))
             summaryLabel.set("\(monitors.count) monitors\(average)")
 
-            while list.arrangedSubviews.count < monitors.count { list.addArrangedSubview(MonitorRowView()) }
-            for (index, view) in list.arrangedSubviews.enumerated() {
-                guard let row = view as? MonitorRowView else { continue }
-                row.isHidden = index >= monitors.count
-                if index < monitors.count { row.configure(with: monitors[index], now: now) }
-            }
+            list.showRows(monitors, make: { MonitorRowView() }) { $0.configure(with: $1, now: now) }
         } else {
             heroLabel.set(lastError?.localizedDescription ?? "loading…")
             heroLabel.alert = lastError != nil
@@ -124,14 +108,7 @@ final class MonitorRowView: UIView {
         let stack = UIStackView(arrangedSubviews: [head, bars])
         stack.axis = .vertical
         stack.spacing = 5
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
+        addFilling(stack)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -155,8 +132,8 @@ final class MonitorRowView: UIView {
 /// One bar per day, oldest left: full ink for 100 %, faded for a short dip,
 /// red below 99 %, a faint stub when there is no data.
 final class DayBarsView: UIView {
-    var days: [Double?] = [] { didSet { setNeedsDisplay() } }
-    var alert = false { didSet { setNeedsDisplay() } }
+    var days: [Double?] = [] { didSet { if days != oldValue { setNeedsDisplay() } } }
+    var alert = false { didSet { if alert != oldValue { setNeedsDisplay() } } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
