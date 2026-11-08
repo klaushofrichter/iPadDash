@@ -37,7 +37,9 @@ private let session: URLSession = {
 
 /// Sends a request and completes on the main queue with the JSON object. A status
 /// other than 200 fails, with the message from the body's `errorKey` if there is one.
-func fetchJSON(_ request: URLRequest, errorKey: String? = nil,
+/// A dropped connection (often a reused one Wi-Fi let lapse while napping on
+/// battery) is retried once, and reported as "connection dropped".
+func fetchJSON(_ request: URLRequest, errorKey: String? = nil, retry: Bool = true,
                completion: @escaping (Result<[String: Any], Error>) -> Void) {
     var request = request
     #if DEBUG
@@ -46,6 +48,11 @@ func fetchJSON(_ request: URLRequest, errorKey: String? = nil,
     session.dataTask(with: request) { data, response, error in
         let json = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
         DispatchQueue.main.async {
+            if let error = error, isDroppedConnection(error) {
+                if retry { return fetchJSON(request, errorKey: errorKey, retry: false, completion: completion) }
+                Connectivity.shared.requestFinished(gotResponse: false)
+                return completion(.failure(ServiceError.api("connection dropped")))
+            }
             Connectivity.shared.requestFinished(gotResponse: response != nil)
             if let error = error {
                 completion(.failure(error))
@@ -59,6 +66,12 @@ func fetchJSON(_ request: URLRequest, errorKey: String? = nil,
             }
         }
     }.resume()
+}
+
+private func isDroppedConnection(_ error: Error) -> Bool {
+    let error = error as NSError
+    return (error.domain == NSURLErrorDomain && error.code == NSURLErrorNetworkConnectionLost)
+        || (error.domain == NSPOSIXErrorDomain && error.code == Int(ECONNABORTED))
 }
 
 /// A URL with these query items, with "+" encoded too: URLComponents leaves it
