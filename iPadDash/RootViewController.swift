@@ -41,6 +41,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
     /// "refreshing", left of the countdown, shown briefly after a tap.
     private let refreshNote = SpacedLabel(font: font(14), alpha: 0.7)
+    /// On the summary page, where no countdown runs, the battery takes its place.
+    private let battery = BatteryIconView()
     private let banner = UILabel()
     private lazy var bannerHeight = banner.heightAnchor.constraint(equalToConstant: 0)
     private let bannerShownHeight: CGFloat = 44
@@ -62,7 +64,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         pager.didMove(toParent: self)
 
         // Footer strip below the pages: date and time at the left, page dots centered,
-        // auto-move countdown at the right.
+        // auto-move countdown at the right, or the battery on the summary page.
 
         clock.textAlignment = .left
         banner.textAlignment = .center
@@ -71,13 +73,14 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
         refreshNote.set("refreshing")
         refreshNote.alpha = 0
-        for v in [pager.view!, clock, dots, countdown, banner, refreshNote] {
+        for v in [pager.view!, clock, dots, countdown, battery, banner, refreshNote] {
             v.translatesAutoresizingMaskIntoConstraints = false
         }
         view.addSubview(refreshNote)
         view.addSubview(clock)
         view.addSubview(dots)
         view.addSubview(countdown)
+        view.addSubview(battery)
         view.addSubview(banner)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
@@ -93,6 +96,10 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
             // Same right margin as the pages' content and rules.
             countdown.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
             countdown.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            battery.trailingAnchor.constraint(equalTo: countdown.trailingAnchor),
+            battery.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            battery.widthAnchor.constraint(equalToConstant: 34),
+            battery.heightAnchor.constraint(equalToConstant: 16),
             refreshNote.trailingAnchor.constraint(equalTo: countdown.leadingAnchor, constant: -10),
             refreshNote.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
             banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -119,6 +126,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                                                name: pageAlertDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateBanner),
                                                name: Connectivity.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateBattery),
+                                               name: ChargeControl.didChange, object: nil)
         Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.updateBanner()
         }
@@ -160,6 +169,18 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         frozenReloadTimer?.invalidate()
         frozenReloadTimer = nil
         countdown.stop()
+        updateBattery()
+    }
+
+    /// Shown on the summary page while no countdown runs: red below 30 %, green
+    /// above 70 %, with a bolt while charging.
+    @objc private func updateBattery() {
+        let charge = ChargeControl.shared
+        battery.isHidden = currentPage !== summary || !countdown.isHidden || charge.batteryLevel == nil
+        guard !battery.isHidden, let level = charge.batteryLevel else { return }
+        battery.level = CGFloat(level)
+        battery.charging = charge.isPowered
+        battery.fillColor = level < 0.30 ? alertInk : level > 0.70 ? goodInk : nil
     }
 
     // MARK: - Auto-move
@@ -169,6 +190,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     /// and after a manual swipe. While frozen, it runs the rest of the freeze instead.
     private func restartAutoMove(swiped: Bool = false) {
         stopAutoMove()
+        defer { updateBattery() }
         guard view.window != nil, presentedViewController == nil else { return }
 
         if let until = frozenUntil, until > Date() {
@@ -282,6 +304,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     // Off-screen pages aren't in the view tree, so theme them explicitly.
     @objc private func themeChanged() {
         updateBanner()
+        updateBattery()   // green and red differ by theme
+        battery.setNeedsDisplay()
         applyTheme(to: view)
         // All pages, including those out of the rotation right now.
         ([summary] + dataPages).filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }

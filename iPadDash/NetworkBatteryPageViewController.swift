@@ -197,7 +197,7 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         stateLabel.alert = charge.notCharging
         batteryIcon.level = charge.batteryLevel.map(CGFloat.init)
         batteryIcon.charging = charge.isPowered
-        batteryIcon.alert = charge.isLow
+        batteryIcon.fillColor = charge.isLow ? alertInk : nil
         plugRow.set("Charging plug", charge.plugStatusText(), alert: charge.plugUnreachableFor != nil)
         let levels = BatteryHistory.shared.samples.filter { now.timeIntervalSince($0.0) <= BatteryHistory.span }.map { $0.1 }
         if let min = levels.min(), let max = levels.max() {
@@ -248,7 +248,8 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
 final class BatteryIconView: UIView {
     var level: CGFloat? { didSet { if level != oldValue { setNeedsDisplay() } } }
     var charging = false { didSet { if charging != oldValue { setNeedsDisplay() } } }
-    var alert = false { didSet { if alert != oldValue { setNeedsDisplay() } } }
+    /// The level's fill; nil is the ink.
+    var fillColor: UIColor? { didSet { if fillColor != oldValue { setNeedsDisplay() } } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -260,23 +261,25 @@ final class BatteryIconView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func draw(_ rect: CGRect) {
-        let nubWidth: CGFloat = 6, line: CGFloat = 3
-        let body = CGRect(x: line / 2, y: line / 2, width: bounds.width - nubWidth - line - 2,
+        // Proportions of the 92 × 42 icon on the Network & Battery page.
+        let size = bounds.height
+        let nubWidth = size / 7, line = max(1.5, size / 14), gap = size / 21
+        let body = CGRect(x: line / 2, y: line / 2, width: bounds.width - nubWidth - line - gap,
                           height: bounds.height - line)
-        let outline = UIBezierPath(roundedRect: body, cornerRadius: 8)
+        let outline = UIBezierPath(roundedRect: body, cornerRadius: size / 5)
         ink.withAlphaComponent(0.6).setStroke()
         outline.lineWidth = line
         outline.stroke()
-        let nub = CGRect(x: body.maxX + 2, y: body.midY - body.height * 0.18, width: nubWidth, height: body.height * 0.36)
+        let nub = CGRect(x: body.maxX + gap, y: body.midY - body.height * 0.18, width: nubWidth, height: body.height * 0.36)
         ink.withAlphaComponent(0.6).setFill()
         UIBezierPath(roundedRect: nub, byRoundingCorners: [.topRight, .bottomRight],
-                     cornerRadii: CGSize(width: 3, height: 3)).fill()
+                     cornerRadii: CGSize(width: size / 14, height: size / 14)).fill()
 
-        let inner = body.insetBy(dx: line + 2, dy: line + 2)
+        let inner = body.insetBy(dx: line + gap, dy: line + gap)
         if let level = level {
             let fill = CGRect(x: inner.minX, y: inner.minY, width: inner.width * min(max(level, 0), 1), height: inner.height)
-            (alert ? alertInk : ink.withAlphaComponent(0.85)).setFill()
-            UIBezierPath(roundedRect: fill, cornerRadius: 4).fill()
+            (fillColor ?? ink.withAlphaComponent(0.85)).setFill()
+            UIBezierPath(roundedRect: fill, cornerRadius: size / 10).fill()
         }
         guard charging else { return }
         // A bolt in the middle, cut out of the fill by a background-colored outline.
@@ -290,7 +293,7 @@ final class BatteryIconView: UIView {
         bolt.addLine(to: CGPoint(x: o.x + w * 0.95, y: o.y + h * 0.42))
         bolt.addLine(to: CGPoint(x: o.x + w * 0.55, y: o.y + h * 0.42))
         bolt.close()
-        bolt.lineWidth = 3
+        bolt.lineWidth = line
         bolt.lineJoinStyle = .round
         paper.setStroke()
         bolt.stroke()

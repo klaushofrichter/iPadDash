@@ -27,6 +27,12 @@ var alertInk: UIColor {
                         : UIColor(red: 0.84, green: 0.05, blue: 0.05, alpha: 1)
 }
 
+/// Ink for good news (a full battery): a green that reads on the same backgrounds.
+var goodInk: UIColor {
+    return Theme.isDark ? UIColor(red: 0.36, green: 0.82, blue: 0.45, alpha: 1)
+                        : UIColor(red: 0.05, green: 0.55, blue: 0.2, alpha: 1)
+}
+
 /// Strokes stripes running bottom-left to top-right across `rect`, `every` points
 /// apart horizontally, in the context's current stroke color and width.
 func strokeHatching(_ ctx: CGContext, in rect: CGRect, every period: CGFloat) {
