@@ -1,7 +1,9 @@
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
-/// Opened by swiping down on a dashboard page: app info and settings.
-/// Closed with Done or by swiping up (iOS 12 has no swipe-to-dismiss).
+/// The settings page, opened by swiping down on a dashboard page.
+/// Closed with Done, by swiping up (iOS 12 has no swipe-to-dismiss), or after a
+/// minute untouched, so the dashboard carries on (countdown next to Done).
 final class AboutViewController: UIViewController, UITextFieldDelegate {
     private let intervalControl = UISegmentedControl(items: Settings.refreshIntervals.map(intervalText))
     private let themeControl = UISegmentedControl(items: ["Light", "Dark"])
@@ -14,6 +16,13 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
     private let ambientStatus = SpacedLabel(font: font(14), alpha: 0.6)
     private let plugField = UITextField()
     private let chargeStatus = SpacedLabel(font: font(14), alpha: 0.6)
+    private let summaryNote = SpacedLabel(font: font(14), alpha: 0.6)
+    private let seeBattery = UIButton(type: .system)
+    /// Closes this page and shows the Network & Battery page.
+    var showBatteryPage: (() -> Void)?
+    private let idleCountdown = CountdownView()
+    private let idleTimeout: TimeInterval = 60
+    private var idleTimer: Timer?
 
     override var prefersStatusBarHidden: Bool { return true }
 
@@ -30,7 +39,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         }
 
         let title = SpacedLabel(font: font(32, .bold), kern: 2)
-        title.set("ABOUT")
+        title.set("SETTINGS")
         let appLine = SpacedLabel(font: font(20))
         appLine.set("iPadDash \(version)")
 
@@ -62,6 +71,18 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         plugField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
         plugField.leftViewMode = .always
         chargeStatus.textAlignment = .left
+        seeBattery.titleLabel?.font = font(14, .bold)
+        seeBattery.setTitle("See it ›", for: .normal)
+        seeBattery.contentHorizontalAlignment = .left
+        seeBattery.addTarget(self, action: #selector(seeBatteryTapped), for: .touchUpInside)
+        let chargeExtra = UIStackView(arrangedSubviews: [chargeStatus, seeBattery])
+        chargeExtra.axis = .vertical
+        chargeExtra.alignment = .leading
+        chargeExtra.spacing = 2
+        summaryNote.textAlignment = .left
+        summaryNote.numberOfLines = 0
+        summaryNote.adjustsFontSizeToFitWidth = false
+        updateSummaryNote()
 
         let done = UIButton(type: .system)
         done.titleLabel?.font = font(20, .bold)
@@ -75,11 +96,10 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
                     note: "How often each page fetches new data on its own. A tap or swipe up on a page reloads immediately."),
             section("Auto-move", control: autoMoveControl,
                     note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
-            section("Summary page", control: summaryControl,
-                    note: "Shows only this page; a page you swipe to comes back here after 2× auto-move (or 30 s)."),
+            section("Summary page", control: summaryControl, extra: summaryNote),
             section("Charging plug", control: plugField,
                     note: "Switches this iPad's charger: on at 30 %, off at 80 %. While off, the plug turns itself back on within 2 h unless the app keeps checking.",
-                    extra: chargeStatus),
+                    extra: chargeExtra),
             section("Theme", control: themeControl),
             section("Date and time", control: clockControl,
                     note: "Shown in the lower left corner of every page."),
@@ -107,7 +127,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         scroll.keyboardDismissMode = .interactive
         stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
-        for v in [scroll, done] as [UIView] {
+        for v in [scroll, done, idleCountdown] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -115,6 +135,8 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         NSLayoutConstraint.activate([
             done.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
             done.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
+            idleCountdown.trailingAnchor.constraint(equalTo: done.leadingAnchor, constant: -12),
+            idleCountdown.centerYAnchor.constraint(equalTo: done.centerYAnchor),
             scroll.topAnchor.constraint(equalTo: guide.topAnchor, constant: 48),
             scroll.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
@@ -129,6 +151,10 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(close))
         swipeUp.direction = .up
         view.addGestureRecognizer(swipeUp)
+        let activity = TouchDownRecognizer(target: nil, action: nil)
+        activity.onTouch = { [weak self] in self?.restartIdle() }
+        view.addGestureRecognizer(activity)
+        plugField.addTarget(self, action: #selector(restartIdle), for: .editingChanged)
         NotificationCenter.default.addObserver(self, selector: #selector(restyle),
                                                name: Theme.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateAmbientStatus),
@@ -142,6 +168,25 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         updateAmbientStatus()
         updateChargeStatus()
         restyle()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        restartIdle()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        idleTimer?.invalidate()
+        idleCountdown.stop()
+    }
+
+    @objc private func restartIdle() {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: idleTimeout, repeats: false) { [weak self] _ in
+            self?.close()
+        }
+        idleCountdown.restart(interval: idleTimeout)
     }
 
     private var doneButton: UIButton?
@@ -208,6 +253,19 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
 
     @objc private func autoMoveChanged() {
         Settings.autoMoveInterval = Settings.autoMoveIntervals[autoMoveControl.selectedSegmentIndex]
+        updateSummaryNote()
+    }
+
+    private func updateSummaryNote() {
+        let back = intervalText(2 * Settings.summaryReturnInterval)
+        summaryNote.set("Shows only this page; a page you swipe to comes back here after \(back)"
+            + (Settings.autoMoveInterval > 0 ? ", twice the auto-move time." : "."))
+    }
+
+    @objc private func seeBatteryTapped() {
+        view.endEditing(true)
+        let show = showBatteryPage
+        dismiss(animated: true) { show?() }
     }
 
     @objc private func summaryChanged() {
@@ -247,6 +305,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
     @objc private func restyle() {
         applyTheme(to: view)
         doneButton?.setTitleColor(ink, for: .normal)
+        seeBattery.setTitleColor(ink, for: .normal)
         plugField.textColor = ink
         plugField.tintColor = ink
         plugField.layer.borderColor = ink.withAlphaComponent(0.5).cgColor
@@ -259,5 +318,22 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
     @objc private func close() {
         view.endEditing(true)
         dismiss(animated: true)
+    }
+}
+
+/// Reports every touch on its view without taking part in gesture recognition.
+private final class TouchDownRecognizer: UIGestureRecognizer {
+    var onTouch: (() -> Void)?
+
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouch?()
+        state = .failed
     }
 }

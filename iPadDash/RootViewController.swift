@@ -4,7 +4,7 @@ import UIKit
 ///   swipe left/right  next/previous page
 ///   tap               freeze the current page for 15 minutes and reload it (again: restart the 15 minutes)
 ///   long press        switch between light and dark
-///   swipe down        About page (settings)
+///   swipe down        Settings page
 ///   swipe up          reload everything on the current page
 /// With auto-move on, it also cross-fades to the next page every N seconds; a page
 /// reached by a swipe stays for 2N first, since it is probably of interest.
@@ -19,9 +19,10 @@ import UIKit
 final class RootViewController: UIViewController, UIPageViewControllerDataSource,
     UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
 
-    private let dataPages: [DashboardPageViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
-                                                         UptimePageViewController(), GitHubPageViewController(),
-                                                         NetworkBatteryPageViewController()]
+    private let networkBattery = NetworkBatteryPageViewController()
+    private lazy var dataPages: [DashboardPageViewController] = [StepsClaudePageViewController(), ClusterPageViewController(),
+                                                              UptimePageViewController(), GitHubPageViewController(),
+                                                              networkBattery]
     private let summary = SummaryPageViewController()
     /// The pages in the rotation: the data pages, after the summary page when it is on,
     /// without those shown only when red that aren't.
@@ -35,7 +36,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let footerHeight: CGFloat = 36
     private let freezeDuration: TimeInterval = 15 * 60
     private let frozenReloadInterval: TimeInterval = 60
-    /// Set while the current page is frozen; kept by wall clock across the About page.
+    /// Set while the current page is frozen; kept by wall clock across the Settings page.
     private var frozenUntil: Date?
     private var frozenReloadTimer: Timer?
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
@@ -151,7 +152,16 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         ChargeControl.shared.start()
     }
 
-    // The About page is full screen, so these also pause auto-move while it is open.
+    /// When the Settings page last closed: a touch landing as it slides away
+    /// shouldn't freeze the page underneath.
+    private var settingsClosedAt = Date.distantPast
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        settingsClosedAt = Date()
+    }
+
+    // The Settings page is full screen, so these also pause auto-move while it is open.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         applyPageSet()
@@ -186,7 +196,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     // MARK: - Auto-move
 
     /// Starts the countdown over (full circle), doubled if the page was just swiped
-    /// to. Called on appear (also after the About page changed a setting), on a tap
+    /// to. Called on appear (also after the Settings page changed a setting), on a tap
     /// and after a manual swipe. While frozen, it runs the rest of the freeze instead.
     private func restartAutoMove(swiped: Bool = false) {
         stopAutoMove()
@@ -211,7 +221,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         if summaryMode {
             // Home stays put; any other page goes back to it once.
             guard currentPage !== summary else { return }
-            let interval = Settings.autoMoveInterval > 0 ? Settings.autoMoveInterval : 15
+            let interval = Settings.summaryReturnInterval
             let delay = swiped ? 2 * interval : interval
             countdown.doubled = swiped
             countdown.restart(interval: delay)
@@ -256,7 +266,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     }
 
     /// Puts the summary page in or out of the rotation to match the setting; with it
-    /// on, shows it. Called at start and when returning from the About page.
+    /// on, shows it. Called at start and when returning from the Settings page.
     private func applyPageSet() {
         let summaryChanged = pages.isEmpty || summaryMode != Settings.summaryPage
         updatePages()
@@ -314,6 +324,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     // MARK: - Gestures
 
     @objc private func tapped() {
+        guard Date().timeIntervalSince(settingsClosedAt) > 1 else { return }
         frozenUntil = Date().addingTimeInterval(freezeDuration)
         restartAutoMove()
         reloadCurrentPage()
@@ -345,6 +356,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     @objc private func showAbout() {
         guard presentedViewController == nil else { return }
         let about = AboutViewController()
+        // Shown even when out of the rotation (red only), until its countdown ends.
+        about.showBatteryPage = { [weak self] in
+            guard let self = self else { return }
+            self.open(self.networkBattery)
+        }
         about.modalPresentationStyle = .fullScreen   // iOS 13+ would default to a sheet
         about.transitioningDelegate = slideFromTop  // pulled down from the top, like the swipe
         present(about, animated: true)

@@ -14,7 +14,7 @@ enum Theme {
     }
 }
 
-/// User settings shown on the About page.
+/// User settings shown on the Settings page.
 enum Settings {
     static let didChange = Notification.Name("SettingsDidChange")
 
@@ -78,6 +78,12 @@ enum Settings {
         }
     }
 
+    /// With the summary page on, how long another page stays before going back to
+    /// it; twice that for a page swiped to.
+    static var summaryReturnInterval: TimeInterval {
+        return autoMoveInterval > 0 ? autoMoveInterval : 15
+    }
+
     /// The summary page is the home page: shown alone, and returned to after a swipe.
     /// Off, it isn't shown at all.
     private static let summaryKey = "summaryPage"
@@ -102,7 +108,7 @@ enum Settings {
     }
 
     /// Saves settings given as launch arguments, "chargePlug=192.168.1.43", as if
-    /// entered on the About page, so deploy.sh can set them without touching the iPad.
+    /// entered on the Settings page, so deploy.sh can set them without touching the iPad.
     static func applyLaunchArguments() {
         for argument in ProcessInfo.processInfo.arguments.dropFirst() {
             let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)

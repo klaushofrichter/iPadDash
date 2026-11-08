@@ -13,7 +13,7 @@ import UIKit
 /// linked by the current SDK don't exist on iOS 12 and crash the app.
 final class AmbientLight {
     static let shared = AmbientLight()
-    /// Posted after each reading or failure (for the About page).
+    /// Posted after each reading or failure (for the Settings page).
     static let didUpdate = Notification.Name("AmbientLightDidUpdate")
 
     /// 0 = dark room ... 1 = bright room; 1 while monitoring is off.

@@ -92,7 +92,7 @@ class DashboardPageViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         guard fixedFetchInterval == nil else { return }
-        // Catch up after being off screen (another page, the About page) longer than an interval.
+        // Catch up after being off screen (another page, the Settings page) longer than an interval.
         if lastFetch.map({ Date().timeIntervalSince($0) >= Settings.refreshInterval }) ?? true {
             fetch()
         }
