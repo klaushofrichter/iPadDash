@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build iPadDash and install it on the USB-connected iPad (iOS 12).
+# Build iPadDash and install it on the iPads (iOS 12), over USB or Wi-Fi.
 #
 # Xcode 27 refuses deployment targets below iOS 15, so the project validates
 # against 15.0 while the compiler and linker target iOS 12 (see
@@ -101,22 +101,23 @@ cp -R "$APP" "$DERIVED/ipa/Payload/"
 bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
 DDI_DIR=${DDI_DIR:-$HOME/Library/Developer/iPadDash-DDI/12.4}
 for udid in $udids; do
+    link=$(ipad_link "$udid")
     name="$(ipad_color "$udid") iPad"
-    ideviceinstaller -u "$udid" install "$DERIVED/iPadDash.ipa"
+    ideviceinstaller $link -u "$udid" install "$DERIVED/iPadDash.ipa"
     git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || git tag "v$VERSION"
-    echo "Installed version $VERSION on the $name"
+    echo "Installed version $VERSION on the $name${link:+ over Wi-Fi}"
 
     # Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
     # no longer ships: 12.4.zip from github.com/filsv/iOSDeviceSupport, unpacked
     # into $DDI_DIR (the iPad checks Apple's signature when mounting). The image
     # stays mounted until the iPad reboots.
-    if ! ideviceimagemounter -u "$udid" list 2>/dev/null | grep -q ImageSignature; then
+    if ! ideviceimagemounter $link -u "$udid" list 2>/dev/null | grep -q ImageSignature; then
         if [ ! -f "$DDI_DIR/DeveloperDiskImage.dmg" ]; then
             echo "Not launched: no developer disk image in $DDI_DIR"
             continue
         fi
-        ideviceimagemounter -u "$udid" mount "$DDI_DIR/DeveloperDiskImage.dmg" \
+        ideviceimagemounter $link -u "$udid" mount "$DDI_DIR/DeveloperDiskImage.dmg" \
             "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
     fi
-    idevicedebug -u "$udid" --detach run "$bundle_id" && echo "Launched on the $name"
+    idevicedebug $link -u "$udid" --detach run "$bundle_id" && echo "Launched on the $name"
 done

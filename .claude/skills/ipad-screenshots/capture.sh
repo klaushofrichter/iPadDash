@@ -22,12 +22,12 @@ end=$(( $(date +%s) + TIMEOUT ))
 have() { ls "$OUT" | grep -c '^page-[0-9]*\.png$' || true; }
 
 while [ "$(have)" -lt "$PAGES" ] && [ "$(date +%s)" -lt "$end" ]; do
-    idevicescreenshot -u "$UDID" "$OUT/.probe.png" >/dev/null
+    idevicescreenshot $(ipad_link "$UDID") -u "$UDID" "$OUT/.probe.png" >/dev/null
     p=$("$TOOL" "$OUT/.probe.png" "$PAGES")
     if [ "$p" != 0 ] && [ ! -f "$OUT/page-$p.png" ]; then
         # Let the fade settle, then keep the shot only if it is still that page.
         sleep 2
-        idevicescreenshot -u "$UDID" "$OUT/.probe2.png" >/dev/null
+        idevicescreenshot $(ipad_link "$UDID") -u "$UDID" "$OUT/.probe2.png" >/dev/null
         [ "$("$TOOL" "$OUT/.probe2.png" "$PAGES")" = "$p" ] && mv "$OUT/.probe2.png" "$OUT/page-$p.png" \
             && echo "page $p $(date +%H:%M:%S)"
     fi

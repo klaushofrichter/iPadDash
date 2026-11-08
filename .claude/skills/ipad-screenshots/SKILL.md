@@ -1,6 +1,6 @@
 ---
 name: ipad-screenshots
-description: Screenshot every page of iPadDash on the USB-connected iPad and post them to the Slack channel #ipad-dashboard. Use when asked for screenshots of the iPad pages, the current dashboard, or to post the dashboard to Slack.
+description: Screenshot every page of iPadDash on a connected iPad (USB or Wi-Fi) and post them to the Slack channel #ipad-dashboard. Use when asked for screenshots of the iPad pages, the current dashboard, or to post the dashboard to Slack.
 ---
 
 # iPad dashboard screenshots → Slack

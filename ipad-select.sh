@@ -1,13 +1,22 @@
 # Sourced by deploy.sh and the ipad-screenshots skill: turns an iPad name into
-# the UDIDs of the matching USB-connected iPads, one per line.
+# the UDIDs of the matching iPads, one per line, over USB or Wi-Fi.
 #   silver | black   the iPad with that color (both are iPad Airs, told apart
 #                    by the front color the iPad reports)
-#   all              every connected iPad
+#   all              every reachable iPad
 #   <UDID prefix>    that iPad
-#   (empty)          the only connected iPad; an error if there are several
+#   (empty)          the only reachable iPad; an error if there are several
+#
+# Wi-Fi needs "Show this iPad when on Wi-Fi" (Finder, set once over USB) and the
+# Mac on the same network. USB is used when an iPad is on both.
+
+# "-n" for an iPad reachable only over Wi-Fi, nothing for one on USB; pass it,
+# unquoted, to the libimobiledevice tools: ideviceinstaller $(ipad_link "$u") -u "$u"
+ipad_link() {
+    idevice_id -l | grep -qx "$1" || printf '%s' -n
+}
 
 ipad_color() {
-    case $(ideviceinfo -u "$1" -k DeviceColor 2>/dev/null) in
+    case $(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceColor 2>/dev/null) in
         '#e1e4e3') echo silver ;;
         '#3b3b3c') echo black ;;
         *) echo unknown ;;
@@ -15,8 +24,8 @@ ipad_color() {
 }
 
 select_ipads() {
-    connected=$(idevice_id -l)
-    [ -n "$connected" ] || { echo "error: no iPad connected over USB" >&2; return 1; }
+    connected=$( (idevice_id -l; idevice_id -n) | sort -u)
+    [ -n "$connected" ] || { echo "error: no iPad connected over USB or Wi-Fi" >&2; return 1; }
     if [ -z "${1:-}" ] && [ "$(echo "$connected" | wc -l)" -gt 1 ]; then
         echo "error: several iPads connected; name one (silver, black or all):" >&2
         for u in $connected; do echo "  $(ipad_color "$u")  $u" >&2; done
