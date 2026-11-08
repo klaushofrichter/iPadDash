@@ -11,6 +11,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // A wall dashboard should never dim or lock.
         application.isIdleTimerDisabled = true
+        Settings.applyLaunchArguments()
 
         if #available(iOS 13.0, *) { return true }
         let window = UIWindow(frame: UIScreen.main.bounds)

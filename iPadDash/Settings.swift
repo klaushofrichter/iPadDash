@@ -101,6 +101,19 @@ enum Settings {
         }
     }
 
+    /// Saves settings given as launch arguments, "chargePlug=192.168.1.43", as if
+    /// entered on the About page, so deploy.sh can set them without touching the iPad.
+    static func applyLaunchArguments() {
+        for argument in ProcessInfo.processInfo.arguments.dropFirst() {
+            let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 2 else { continue }
+            switch parts[0] {
+            case chargePlugKey: chargePlug = parts[1]
+            default: NSLog("iPadDash: unknown setting %@", parts[0])
+            }
+        }
+    }
+
     /// How often the front camera samples room brightness, in seconds; 0 means off.
     static let ambientIntervals: [TimeInterval] = [0, 60, 300, 900]
     private static let ambientKey = "ambientInterval"

@@ -8,7 +8,8 @@
 # bundle, and installs it with libimobiledevice (Xcode 27 can't deploy to iOS 12).
 #
 # Usage:
-#   ./deploy.sh [IPAD]     build, patch, sign, install, launch
+#   ./deploy.sh [IPAD] [KEY=VALUE...]   build, patch, sign, install, launch
+#                                       (KEY=VALUE are settings the app saves, e.g. chargePlug=192.168.1.43)
 #   ./deploy.sh --check    unsigned build + checks only (no iPad or Apple ID needed)
 # IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
 # left out when only one iPad is connected.
@@ -19,9 +20,9 @@ set -eu
 
 cd "$(dirname "$0")"
 . ./ipad-select.sh
-CHECK=""; IPAD=""
+CHECK=""; IPAD=""; SETTINGS=""
 for arg in "$@"; do
-    case $arg in --check) CHECK=1 ;; *) IPAD=$arg ;; esac
+    case $arg in --check) CHECK=1 ;; *=*) SETTINGS="$SETTINGS $arg" ;; *) IPAD=$arg ;; esac
 done
 [ -n "$CHECK" ] || udids=$(select_ipads "$IPAD")
 MIN_OS=12.0
@@ -119,5 +120,5 @@ for udid in $udids; do
         ideviceimagemounter $link -u "$udid" mount "$DDI_DIR/DeveloperDiskImage.dmg" \
             "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
     fi
-    idevicedebug $link -u "$udid" --detach run "$bundle_id" && echo "Launched on the $name"
+    idevicedebug $link -u "$udid" --detach run "$bundle_id" $SETTINGS && echo "Launched on the $name"
 done
