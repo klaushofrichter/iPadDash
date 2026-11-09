@@ -98,7 +98,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
                     note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
             section("Summary page", control: summaryControl, extra: summaryNote),
             section("Charging plug", control: plugField,
-                    note: "Switches this iPad's charger: on at 30 %, off at 80 %. While off, the plug turns itself back on within 2 h unless the app keeps checking.",
+                    note: "Switches this iPad's charger: on at 40 %, off at 70 %. While off, the plug turns itself back on within 2 h unless the app keeps checking.",
                     extra: chargeExtra),
             section("Theme", control: themeControl),
             section("Date and time", control: clockControl,

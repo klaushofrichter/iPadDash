@@ -150,6 +150,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         AmbientLight.shared.start()
         BatteryHistory.shared.start()
         ChargeControl.shared.start()
+        DispatchQueue.main.async { NightScreen.shared.start() }   // once the main window is up
     }
 
     /// When the Settings page last closed: a touch landing as it slides away

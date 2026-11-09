@@ -58,6 +58,7 @@ final class AmbientLight {
     }
 
     private func sample() {
+        guard !NightScreen.shared.isActive else { return }   // the night screen sets its own brightness
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             queue.async { self.runSession() }
@@ -136,7 +137,7 @@ final class AmbientLight {
             level = newLevel
             NotificationCenter.default.post(name: Theme.didChange, object: nil)
         }
-        if isOn {
+        if isOn && !NightScreen.shared.isActive {
             UIScreen.main.brightness = 0.1 + 0.8 * level
         }
     }

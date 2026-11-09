@@ -75,8 +75,10 @@ final class KasaPlug {
     }
 }
 
-/// Keeps the battery between 30 % and 80 % by switching the Kasa plug the charger
-/// is plugged into (Settings.chargePlug): on at 30 %, off at 80 %. Whenever the plug
+/// Keeps the battery between 40 % and 70 % by switching the Kasa plug the charger
+/// is plugged into (Settings.chargePlug): on at 40 %, off at 70 %. A narrow band in
+/// the middle keeps a battery that is always near power from sitting at a high
+/// charge, which ages it and can make it swell. Whenever the plug
 /// is off, a countdown rule on the plug itself turns it back on within two hours
 /// unless the app keeps re-arming it, so a crashed app or lost Wi-Fi can't let the
 /// iPad run flat.
@@ -84,11 +86,15 @@ final class ChargeControl {
     static let shared = ChargeControl()
     static let didChange = Notification.Name("ChargeControlDidChange")
 
-    static let onBelow: Float = 0.30
-    static let offAbove: Float = 0.80
+    static let onBelow: Float = 0.40
+    static let offAbove: Float = 0.70
     /// Below this, off power, the battery is red.
     static let lowBelow: Float = 0.20
     private let checkInterval: TimeInterval = 5 * 60
+    /// While charging, check every minute so the plug goes off close to `offAbove`
+    /// (at five minutes the battery got some 10 % past it).
+    private let chargingCheckInterval: TimeInterval = 60
+    private var lastCheck = Date.distantPast
     private let watchdogDelay = 2 * 60 * 60        // seconds until the plug turns itself on
     private let rearmBelow = 60 * 60               // re-arm when less than this is left
     private let ruleName = "iPadDash"
@@ -130,8 +136,10 @@ final class ChargeControl {
             center.addObserver(self, selector: #selector(batteryChanged), name: name, object: nil)
         }
         center.addObserver(self, selector: #selector(settingsChanged), name: Settings.didChange, object: nil)
-        timer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { [weak self] _ in
-            self?.check()
+        timer = Timer.scheduledTimer(withTimeInterval: chargingCheckInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let interval = self.plugOn == true ? self.chargingCheckInterval : self.checkInterval
+            if Date().timeIntervalSince(self.lastCheck) >= interval - 1 { self.check() }
         }
         settingsChanged()
     }
@@ -225,6 +233,7 @@ final class ChargeControl {
     func check() {
         guard let plug = plug, !busy else { return }
         busy = true
+        lastCheck = Date()
         plug.send(["system": ["get_sysinfo": [:]], "count_down": ["get_rules": [:]]]) { result in
             switch result {
             case .failure(let error):
