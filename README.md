@@ -29,7 +29,9 @@ and if nothing does, it shows the time and the weather and stays out of the way.
   means "look at this", slow cross-fades between pages, and a screen that dims
   with the room.
 - **Easy to extend by asking.** A new page is one small Swift file on a shared
-  template. Describe what you want to an LLM such as Claude and it builds the page.
+  template. Describe what you want to an LLM such as Claude and it builds the page,
+  or point it at this repository and have it build a dashboard for your own data
+  (see [How to use this](#how-to-use-this)).
 - **Looks after the hardware.** Keeps the battery between 40 % and 70 % through a
   smart plug, goes dark at night, and is deployed over Wi-Fi so the iPad never
   needs a cable to the Mac.
@@ -240,10 +242,38 @@ can make it swell. iPadDash manages its own charger:
 Settings covers the update interval, auto-move, the summary page, the charging
 plug, the theme, the clock format and ambient light.
 
+## How to use this
+
+The pages in this repository show one household's data: our cluster, our
+websites, our GitHub account, our steps. Built as they are, they are of little
+use to anyone else. What carries over is everything around them: the iOS 12
+groundwork, the page templates, the summary page, the calm design, battery care
+and the Wi-Fi deployment.
+
+You can clone or fork the repository and change the pages yourself. It is often
+easier to let an LLM do it. With [Claude Code](https://claude.com/claude-code) or
+a similar coding agent, start with something like:
+
+> Look at this repository: https://github.com/klaushofrichter/iPadDash. Build me
+> the same kind of dashboard for my old iPad, with pages that show my data: my
+> Home Assistant sensors, the status of my websites on UptimeRobot, and my
+> calendar for today. Keep the summary page, the page templates, the look and
+> the battery care. Leave out the pages I don't need.
+
+The agent can read how the existing pages are made and build yours the same way.
+You still need what step 0 of [Setting it up](#setting-it-up) lists (a Mac with
+Xcode and the iPad), and the keys or tokens for your own data sources.
+
 ## Setting it up
 
-You need a Mac with Xcode, an Apple ID added in Xcode, and
-`brew install ideviceinstaller`.
+**These steps are for this repository as it is, with its pages and data
+sources.** The keys below belong to services only this household uses; for
+anyone else they are of no use, and the pages that need them will just say that
+a key is missing. To build your own dashboard, see
+[How to use this](#how-to-use-this) first.
+
+0. You need a Mac with Xcode, an Apple ID added in Xcode, and
+   `brew install ideviceinstaller`.
 
 1. Put the credentials for the pages you use into `.env` (git-ignored):
 
@@ -283,11 +313,6 @@ builds without signing and checks that the binary loads on iOS 12.
 ```
 
 runs the unit tests in an iPad simulator.
-
-The data sources are specific to this household (a steps service, one Grafana
-Cloud stack, one UptimeRobot account, one GitHub user). Pointing a page at your
-own source, or replacing it, is the kind of change described under
-[Add your own page by asking](#add-your-own-page-by-asking).
 
 ## License
 

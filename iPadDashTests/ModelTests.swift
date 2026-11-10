@@ -144,10 +144,10 @@ final class ModelTests: XCTestCase {
             return ClaudeSummary(reading: reading, now: now).usageAlerts
         }
         XCTAssertEqual(alerts(session: 40, weekly: 40), [])
-        XCTAssertEqual(alerts(session: 60, weekly: 40), [PageAlert("Claude Session Usage", "ahead of pace")])
-        XCTAssertEqual(alerts(session: 40, weekly: 60), [PageAlert("Claude Weekly Usage", "ahead of pace")])
-        XCTAssertEqual(alerts(session: 60, weekly: 60), [PageAlert("Claude Session Usage", "ahead of pace"),
-                                                         PageAlert("Claude Weekly Usage", "ahead of pace")])
+        XCTAssertEqual(alerts(session: 60, weekly: 40), [PageAlert("Claude Session Usage", "60% · pace 50%")])
+        XCTAssertEqual(alerts(session: 40, weekly: 72.5), [PageAlert("Claude Weekly Usage", "72.5% · pace 50%")])
+        XCTAssertEqual(alerts(session: 60, weekly: 55), [PageAlert("Claude Session Usage", "60% · pace 50%"),
+                                                         PageAlert("Claude Weekly Usage", "55% · pace 50%")])
         XCTAssertEqual(alerts(session: nil, weekly: 60).map { $0.what }, ["Claude Weekly Usage"])
     }
 
