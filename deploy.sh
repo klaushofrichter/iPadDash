@@ -14,6 +14,11 @@
 # IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
 # left out when only one iPad is connected.
 #
+# A deploy is a release: the code must be committed and pushed, and after the
+# install the version tag is pushed and a GitHub source release made for it (with
+# `gh`). DIRTY=1 deploys uncommitted or unpushed code for a quick try, as version
+# "dev", without tag or release.
+#
 # Requires: the credentials below in .env; for install also an Apple ID added in
 # Xcode, DEVELOPMENT_TEAM set on the target, and `brew install ideviceinstaller`.
 set -eu
@@ -24,6 +29,20 @@ CHECK=""; IPAD=""; SETTINGS=""
 for arg in "$@"; do
     case $arg in --check) CHECK=1 ;; *=*) SETTINGS="$SETTINGS $arg" ;; *) IPAD=$arg ;; esac
 done
+DIRTY=${DIRTY:-}
+if [ -z "$CHECK" ] && [ -z "$DIRTY" ]; then
+    # Everything that goes on the iPads must be in the tagged commit, on GitHub.
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+        echo "error: uncommitted changes; commit and push first (or DIRTY=1 for a dev build)" >&2
+        exit 1
+    fi
+    git fetch -q origin
+    if ! git branch -r --contains HEAD | grep -q .; then
+        echo "error: $(git rev-parse --short HEAD) is not pushed; push first (or DIRTY=1 for a dev build)" >&2
+        exit 1
+    fi
+    command -v gh >/dev/null || { echo "error: the GitHub CLI (gh) is needed for the release" >&2; exit 1; }
+fi
 [ -n "$CHECK" ] || udids=$(select_ipads "$IPAD")
 MIN_OS=12.0
 CONFIG=${CONFIG:-Release}
@@ -85,9 +104,16 @@ echo "Checks passed: minos $minos, MinimumOSVersion $MIN_OS"
 # Same scheme as the cluster's services: YYYY.MM.DD.N, set at deploy time and not
 # stored in the source (other builds say "dev"). N is the same-day count of earlier
 # releases, and the local v* git tags are the state. Dated in the cluster's zone.
+# A commit deployed before keeps its version: one tag and one release per commit.
 today=$(TZ=America/Chicago date +%Y.%m.%d)
-tags=$(git tag -l "v$today.*")
-VERSION="$today.$(( $(printf '%s' "$tags" | grep -c '^' || true) + 1 ))"
+if [ -n "$DIRTY" ]; then
+    VERSION="dev"
+elif existing=$(git tag --points-at HEAD -l 'v*' | sort -V | tail -1) && [ -n "$existing" ]; then
+    VERSION=${existing#v}
+else
+    tags=$(git tag -l "v$today.*")
+    VERSION="$today.$(( $(printf '%s' "$tags" | grep -c '^' || true) + 1 ))"
+fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Info.plist"
 
 # Patching Info.plist invalidated the signature; re-sign with the same identity
@@ -105,7 +131,7 @@ for udid in $udids; do
     link=$(ipad_link "$udid")
     name="$(ipad_color "$udid") iPad"
     ideviceinstaller $link -u "$udid" install "$DERIVED/iPadDash.ipa"
-    git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || git tag "v$VERSION"
+    installed=1
     echo "Installed version $VERSION on the $name${link:+ over Wi-Fi}"
 
     # Launch it. debugserver needs the iOS 12 developer disk image, which Xcode 27
@@ -122,3 +148,28 @@ for udid in $udids; do
     fi
     idevicedebug $link -u "$udid" --detach run "$bundle_id" $SETTINGS && echo "Launched on the $name"
 done
+
+# Tag, push the tag, and make the GitHub source release, once something was installed.
+[ -n "$DIRTY" ] && exit 0
+[ -n "${installed:-}" ] || { echo "Nothing installed: no tag or release" >&2; exit 1; }
+tag="v$VERSION"
+if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    previous=$(git tag -l 'v*' --merged HEAD | sort -V | tail -1)
+    git tag "$tag"
+fi
+git push -q origin "$tag"
+if gh release view "$tag" >/dev/null 2>&1; then
+    echo "Release $tag exists already"
+else
+    {
+        echo "Source release: build and install it with ./deploy.sh (see the README)."
+        echo
+        if [ -n "${previous:-}" ]; then
+            echo "Changes since $previous:"
+            echo
+            git log --no-merges --format='- %s' "$previous..$tag"
+        fi
+    } > "$DERIVED/release-notes.md"
+    gh release create "$tag" --verify-tag --latest --title "$tag" --notes-file "$DERIVED/release-notes.md" >/dev/null
+    echo "Released $tag: $(gh release view "$tag" --json url -q .url)"
+fi
