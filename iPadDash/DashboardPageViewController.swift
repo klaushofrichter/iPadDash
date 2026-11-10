@@ -36,8 +36,9 @@ func makeDateFormatter(_ format: String) -> DateFormatter {
 let timeOfDayFormatter = makeDateFormatter("h:mm a")
 
 /// A swipeable dashboard page: fetches on a timer and on demand, and shows the
-/// result under a title bar. Subclasses build their views, call `startFetching()`
-/// at the end of `viewDidLoad`, and override `load(completion:)` and `render()`.
+/// result in one of the two page templates (`addFullPage`, `addSplitPage`).
+/// Subclasses build their views, call `startFetching()` at the end of
+/// `viewDidLoad`, and override `load(completion:)` and `render()`.
 class DashboardPageViewController: UIViewController {
     /// Everything on the page drawn in red (a red page dot, and rows on the summary page).
     var alerts: [PageAlert] = [] {
@@ -143,15 +144,30 @@ class DashboardPageViewController: UIViewController {
         }
     }
 
-    /// The headline under the page title, and the dimmed line under it (see `addHeader`).
+    // MARK: - Page templates
+    //
+    // Every page ends the same way: a rule, then the title bar with the page's name
+    // on the left and its status (`instanceLabel`) on the right. The root's footer
+    // (time, page dots, countdown or battery) follows below the page. Above the rule:
+    //
+    //   full page    the title ("GITHUB"), `heroLabel` and a subtitle, centered,
+    //                then the content area
+    //   split page   two panels side by side with a divider between them, a rule,
+    //                then the lower half as the content area
+    //
+    // A page calls one of the two in `viewDidLoad`, adds its views to `view` and
+    // constrains them to the content area (a layout guide) it gets back.
+
+    /// The headline under a full page's title, and the dimmed line under it.
     private(set) lazy var heroLabel = SpacedLabel(font: font(36, .heavy))
     private(set) lazy var summaryLabel = SpacedLabel(font: font(16), alpha: 0.6)
 
-    /// Adds the page title ("GITHUB") centered at the top, `heroLabel` under it, and
-    /// under that `subtitle` (`summaryLabel` unless given). Returns the subtitle, for
-    /// the page's content to follow.
-    @discardableResult
-    func addHeader(_ title: String, subtitle: UIView? = nil, subtitleSpacing: CGFloat = 6) -> UIView {
+    /// Builds the full page: `title` centered at the top, `heroLabel` under it, then
+    /// `subtitle` (`summaryLabel` unless given), and `bar` in the title bar (the
+    /// title unless given). Returns the content area between subtitle and rule.
+    func addFullPage(title: String, bar: String? = nil, subtitle: UIView? = nil,
+                     subtitleSpacing: CGFloat = 6) -> UILayoutGuide {
+        let rule = addTitleBar(bar ?? title)
         let titleLabel = SpacedLabel(font: font(26, .bold), kern: 2, uppercase: true)
         titleLabel.set(title)
         let subtitle = subtitle ?? summaryLabel
@@ -169,18 +185,22 @@ class DashboardPageViewController: UIViewController {
             subtitle.topAnchor.constraint(equalTo: heroLabel.bottomAnchor, constant: subtitleSpacing),
             subtitle.centerXAnchor.constraint(equalTo: view.centerXAnchor),
         ])
-        return subtitle
+        return addContentArea(below: subtitle.bottomAnchor, gap: 24, side: 24, above: rule)
     }
 
-    /// The TRMNL-style top half: two equal panels with a divider between them and
-    /// the title bar below, ending at the middle of the screen.
-    func addPanels(_ left: UIView, _ right: UIView, title: String) -> (rule: UIView, bar: UIView) {
+    /// Builds the split page (the TRMNL design in the upper part): `left` and `right`
+    /// as equal panels with a divider between them, a rule across, and `bar` in the
+    /// title bar. Returns the content area of the lower half.
+    func addSplitPage(left: UIView, right: UIView, bar: String) -> UILayoutGuide {
+        let rule = addTitleBar(bar)
         let divider = InkView()
         let columns = UIStackView(arrangedSubviews: [left, divider, right])
         columns.alignment = .fill
-        let (rule, bar) = addTitleBar(title)
-        columns.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(columns)
+        let middleRule = InkView()
+        for v in [columns, middleRule] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(v)
+        }
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             divider.widthAnchor.constraint(equalToConstant: 2),
@@ -188,15 +208,48 @@ class DashboardPageViewController: UIViewController {
             columns.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
             columns.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
             columns.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
-            rule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
-            bar.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -8),
+            middleRule.topAnchor.constraint(equalTo: columns.bottomAnchor, constant: 8),
+            // A little above the middle: the lower half has the title bar below it.
+            middleRule.bottomAnchor.constraint(equalTo: view.centerYAnchor, constant: -36),
+            middleRule.heightAnchor.constraint(equalToConstant: 2),
+            middleRule.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
+            middleRule.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
         ])
-        return (rule, bar)
+        return addContentArea(below: middleRule.bottomAnchor, gap: 16, side: 16, above: rule)
+    }
+
+    /// The area a page fills, from `gap` below `anchor` down to the title bar's rule.
+    /// A layout guide rather than a view: the page's views stay direct subviews, so
+    /// their sizes are final in `viewDidLayoutSubviews`.
+    private func addContentArea(below anchor: NSLayoutYAxisAnchor, gap: CGFloat, side: CGFloat,
+                                above rule: UIView) -> UILayoutGuide {
+        let content = UILayoutGuide()
+        view.addLayoutGuide(content)
+        let guide = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: anchor, constant: gap),
+            content.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
+            content.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -side),
+            content.bottomAnchor.constraint(equalTo: rule.topAnchor, constant: -12),
+        ])
+        return content
+    }
+
+    /// Adds `subview` filling a content area.
+    func fill(_ area: UILayoutGuide, with subview: UIView) {
+        subview.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(subview)
+        NSLayoutConstraint.activate([
+            subview.topAnchor.constraint(equalTo: area.topAnchor),
+            subview.bottomAnchor.constraint(equalTo: area.bottomAnchor),
+            subview.leadingAnchor.constraint(equalTo: area.leadingAnchor),
+            subview.trailingAnchor.constraint(equalTo: area.trailingAnchor),
+        ])
     }
 
     /// Adds the rule and the title bar (name on the left, `instanceLabel` on the
-    /// right) with their side margins. The page places them vertically.
-    func addTitleBar(_ name: String) -> (rule: UIView, bar: UIView) {
+    /// right) at the bottom of the page. Returns the rule.
+    private func addTitleBar(_ name: String) -> UIView {
         pageName = name.components(separatedBy: " · ")[0]
         let rule = InkView()
         let titleLabel = SpacedLabel(font: font(16, .bold))
@@ -216,8 +269,9 @@ class DashboardPageViewController: UIViewController {
             bar.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 8),
             bar.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
-        return (rule, bar)
+        return rule
     }
 
     /// "refreshing…", "fetch failed: … · updated …" over older data, or just `updated`

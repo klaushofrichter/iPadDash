@@ -15,7 +15,8 @@ final class SummaryPageViewController: DashboardPageViewController {
     private var rowTargets: [DashboardPageViewController?] = []
 
     private let service = WeatherService()
-    private var forecast: WeatherForecast?
+    /// Not private: the tests set it.
+    var forecast: WeatherForecast?
     private var lastError: Error?
 
     /// "Steps & Claude · Cluster · …": each name leads to its page, and turns red
@@ -26,9 +27,9 @@ final class SummaryPageViewController: DashboardPageViewController {
     private let alertRows = UIStackView()
     /// "Red on the dashboard" over the red items; it and the rows are hidden when there are none.
     private lazy var alertHeading = sectionHeading("Red on the dashboard")
-    /// The clock and weather start below the red items, or right below the names when there are none.
+    /// The clock and weather start below the red items, or at the top of the content when there are none.
     private lazy var lowerBelowRows = lowerArea.topAnchor.constraint(equalTo: alertRows.bottomAnchor, constant: 24)
-    private lazy var lowerBelowNames = lowerArea.topAnchor.constraint(equalTo: sourceNames.bottomAnchor, constant: 24)
+    private var lowerBelowNames: NSLayoutConstraint?
     /// When the forecast was last fetched successfully.
     private var weatherUpdated: Date?
     private let timeLabel = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 150 * scale, weight: .light))
@@ -41,8 +42,9 @@ final class SummaryPageViewController: DashboardPageViewController {
     private let hourColumns = UIStackView()
     private let graph = TemperatureGraphView()
     private let weather = UIStackView()
-    private let lower = UIStackView()
-    private let lowerArea = UIView()
+    /// Not private: the tests check that `lower` fits in `lowerArea`.
+    let lower = UIStackView()
+    let lowerArea = UIView()
     /// Top to bottom = most to least important; fitLowerSections() drops from the bottom.
     private lazy var lowerSections: [UIView] = [timeLabel, dateLabel, weather, graph]
     /// The space after each section but the last.
@@ -81,31 +83,26 @@ final class SummaryPageViewController: DashboardPageViewController {
         lower.translatesAutoresizingMaskIntoConstraints = false
         lowerArea.addSubview(lower)
 
-        let (rule, titleBar) = addTitleBar("Summary")
-        addHeader("Summary", subtitle: sourceNames, subtitleSpacing: -2)
-
+        let content = addFullPage(title: "Summary", subtitle: sourceNames, subtitleSpacing: -2)
         for v in [alertHeading, alertRows, lowerArea] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
-        let guide = view.safeAreaLayoutGuide
-        let side: CGFloat = 24
+        lowerBelowNames = lowerArea.topAnchor.constraint(equalTo: content.topAnchor)
         NSLayoutConstraint.activate([
-            alertHeading.topAnchor.constraint(equalTo: sourceNames.bottomAnchor, constant: 24),
-            alertHeading.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
+            alertHeading.topAnchor.constraint(equalTo: content.topAnchor),
+            alertHeading.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             alertRows.topAnchor.constraint(equalTo: alertHeading.bottomAnchor, constant: 14),
-            alertRows.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
-            alertRows.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -side),
+            alertRows.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            alertRows.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
             lowerBelowRows,
-            lowerArea.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
-            lowerArea.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -side),
-            lowerArea.bottomAnchor.constraint(equalTo: rule.topAnchor, constant: -12),
+            lowerArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            lowerArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            lowerArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             lower.leadingAnchor.constraint(equalTo: lowerArea.leadingAnchor),
             lower.trailingAnchor.constraint(equalTo: lowerArea.trailingAnchor),
             lower.centerYAnchor.constraint(equalTo: lowerArea.centerYAnchor),
-
-            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
         for name in [pageAlertDidChange, Connectivity.didChange] {
@@ -173,8 +170,8 @@ final class SummaryPageViewController: DashboardPageViewController {
         alertRows.isHidden = items.isEmpty
         // Deactivate first, so the two are never on together.
         let (on, off) = items.isEmpty ? (lowerBelowNames, lowerBelowRows) : (lowerBelowRows, lowerBelowNames)
-        off.isActive = false
-        on.isActive = true
+        off?.isActive = false
+        on?.isActive = true
         let rows = alertRows.arrangedSubviews.compactMap { $0 as? KeyValueRow }
         rowTargets = rows.indices.map { $0 < items.count ? items[$0].page : nil }
         for (row, target) in zip(rows, rowTargets) { row.gestureRecognizers?.forEach { $0.isEnabled = target != nil } }
@@ -184,7 +181,7 @@ final class SummaryPageViewController: DashboardPageViewController {
 
         updateClock(now)
 
-        let place = forecast?.place.map { " · \($0)" } ?? ""
+        let place = service.place.map { " · \($0)" } ?? ""
         weatherHeading.set("Weather\(place) · next \(SummaryPageViewController.hours - 1) hours, °C")
         // Hours already past drop off between fetches.
         let upcoming = (forecast?.hours ?? []).filter { $0.time > now.addingTimeInterval(-3600) }

@@ -99,20 +99,17 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         stack.setCustomSpacing(8, after: graphCaption)
         stack.setCustomSpacing(40, after: graph)
 
-        let (rule, titleBar) = addTitleBar("Network & Battery")
-        let header = addHeader("Network & Battery")
+        let content = addFullPage(title: "Network & Battery")
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
-        let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 32),
-            stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: rule.topAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor),
             graph.heightAnchor.constraint(equalToConstant: 200),
             batteryIcon.widthAnchor.constraint(equalToConstant: 92),
             batteryIcon.heightAnchor.constraint(equalToConstant: 42),
-            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
         let center = NotificationCenter.default
@@ -124,12 +121,6 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
     @objc private func connectivityChanged() {
         readInterface()
         render()
-    }
-
-    /// A reload asks the charging plug too, instead of waiting for its own check.
-    override func reloadNow(completion: (() -> Void)? = nil) {
-        ChargeControl.shared.check()
-        super.reloadNow(completion: completion)
     }
 
     override func load(completion: @escaping () -> Void) {

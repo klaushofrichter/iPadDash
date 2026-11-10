@@ -44,8 +44,9 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let toast = UIView()
     private let toastLabel = UILabel()
     private let toastSpinner = UIActivityIndicatorView(style: .white)
-    /// Counts reloads, so only the latest one ends the toast.
+    /// Counts reloads and their ends, so only the latest reload ends the toast, once.
     private var reloadCount = 0
+    private let reloadTimeout: TimeInterval = 45
     /// On the summary page, where no countdown runs, the battery takes its place.
     private let battery = BatteryIconView()
     private let banner = UILabel()
@@ -229,7 +230,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                 self?.restartAutoMove()   // back to the normal cycle, starting full
             }
             frozenReloadTimer = Timer.scheduledTimer(withTimeInterval: frozenReloadInterval, repeats: true) { [weak self] _ in
-                self?.currentPage?.reloadNow()
+                self?.pagesToReload.forEach { $0.reloadNow() }
             }
             return
         }
@@ -355,27 +356,50 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         restartAutoMove(swiped: true)
     }
 
-    /// Reloads the page (on the summary page, every page it lists) with the toast
-    /// showing until all the data is in.
+    /// Reloads the page (on the summary page, every page it lists) and asks the
+    /// charging plug, with the toast showing until all the answers are in.
     @objc private func reloadCurrentPage() {
-        guard let page = currentPage else { return }
+        let reloading = pagesToReload
+        guard !reloading.isEmpty else { return }
         reloadCount += 1
         let count = reloadCount
-        // The summary page shows the other pages' red items, so they reload too.
-        let reloading = page === summary ? [summary] + summary.sources : [page]
-        showToast(page === summary ? "Refreshing all pages…" : "Refreshing…", busy: true)
+        showToast(reloading.count > 1 ? "Refreshing all pages…" : "Refreshing…", busy: true)
         let group = DispatchGroup()
         for page in reloading {
             group.enter()
             page.reloadNow { group.leave() }
         }
+        // A fetch that never ends (an unanswered permission prompt) must not keep the toast up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + reloadTimeout) { [weak self] in
+            guard let self = self, count == self.reloadCount else { return }
+            self.reloadCount += 1
+            self.endToast("Some data has not arrived yet", after: 3)
+        }
+        // The charging plug too, if one is set up: its answer shows it is still reachable.
+        let charge = ChargeControl.shared
+        group.enter()
+        charge.check { group.leave() }
         group.notify(queue: .main) { [weak self] in
             guard let self = self, count == self.reloadCount else { return }
-            self.showToast("Updated", busy: false)
-            UIView.animate(withDuration: 0.6, delay: 1.2, options: [.beginFromCurrentState], animations: {
-                self.toast.alpha = 0
-            })
+            self.reloadCount += 1   // the timeout has nothing left to do
+            let plugFailed = charge.isOn && charge.lastError != nil
+            self.endToast(plugFailed ? "Updated · charging plug not reachable" : "Updated", after: plugFailed ? 3 : 1.2)
         }
+    }
+
+    /// What a reload of the current page covers: on the summary page also the pages
+    /// whose red items it shows.
+    private var pagesToReload: [DashboardPageViewController] {
+        guard let page = currentPage else { return [] }
+        return page === summary ? [summary] + summary.sources : [page]
+    }
+
+    /// The toast's last word, fading out after `delay`.
+    private func endToast(_ text: String, after delay: TimeInterval) {
+        showToast(text, busy: false)
+        UIView.animate(withDuration: 0.6, delay: delay, options: [.beginFromCurrentState], animations: {
+            self.toast.alpha = 0
+        })
     }
 
     private func showToast(_ text: String, busy: Bool) {
@@ -384,7 +408,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         toastLabel.textColor = paper
         toastSpinner.color = paper
         toastLabel.text = text
-        toastSpinner.isHidden = !busy
         if busy { toastSpinner.startAnimating() } else { toastSpinner.stopAnimating() }
         UIView.animate(withDuration: 0.2) { self.toast.alpha = 1 }
     }

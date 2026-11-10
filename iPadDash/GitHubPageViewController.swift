@@ -40,35 +40,28 @@ final class GitHubPageViewController: DashboardPageViewController {
         mergeArea.clipsToBounds = true
         mergeArea.addSubview(mergeRows)
 
-        let (rule, titleBar) = addTitleBar("GitHub · \(service.owner)")
-        let header = addHeader("GitHub")
-
-        let views: [UIView] = [openHeading, repoRows, mergeHeading, mergeArea]
-        for v in views {
+        let content = addFullPage(title: "GitHub", bar: "GitHub · \(service.owner)")
+        for v in [openHeading, repoRows, mergeHeading, mergeArea] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
-        let guide = view.safeAreaLayoutGuide
-        let side: CGFloat = 24
         NSLayoutConstraint.activate([
-            openHeading.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 32),
-            openHeading.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
+            openHeading.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            openHeading.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             repoRows.topAnchor.constraint(equalTo: openHeading.bottomAnchor, constant: 14),
-            repoRows.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
-            repoRows.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -side),
+            repoRows.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            repoRows.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
             mergeHeading.topAnchor.constraint(equalTo: repoRows.bottomAnchor, constant: 32),
-            mergeHeading.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
-            mergeHeading.trailingAnchor.constraint(lessThanOrEqualTo: guide.trailingAnchor, constant: -side),
+            mergeHeading.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            mergeHeading.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor),
             mergeArea.topAnchor.constraint(equalTo: mergeHeading.bottomAnchor, constant: 14),
-            mergeArea.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: side),
-            mergeArea.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -side),
-            mergeArea.bottomAnchor.constraint(equalTo: rule.topAnchor, constant: -12),
+            mergeArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            mergeArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            mergeArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             mergeRows.topAnchor.constraint(equalTo: mergeArea.topAnchor),
             mergeRows.leadingAnchor.constraint(equalTo: mergeArea.leadingAnchor),
             mergeRows.trailingAnchor.constraint(equalTo: mergeArea.trailingAnchor),
-
-            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
 
         startFetching()

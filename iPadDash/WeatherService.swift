@@ -11,7 +11,6 @@ struct HourlyTemperature {
 }
 
 struct WeatherForecast {
-    var place: String?
     var hours: [HourlyTemperature] = []
 }
 
@@ -20,7 +19,10 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let geocoder = CLGeocoder()
     private var waiting: [(CLLocation?) -> Void] = []
-    private var place: String?
+    /// The town's name, once the lookup after the first fix has answered.
+    private(set) var place: String?
+    /// How long to wait for an answer to the location permission prompt.
+    private let promptTimeout: TimeInterval = 20
     private static let latKey = "weatherLatitude", lonKey = "weatherLongitude"
 
     override init() {
@@ -50,7 +52,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
                         guard let celsius = (temp as? NSNumber)?.doubleValue else { return nil }
                         return HourlyTemperature(time: Date(timeIntervalSince1970: time.doubleValue), celsius: celsius)
                     }
-                    return .success(WeatherForecast(place: self.place, hours: hours))
+                    return .success(WeatherForecast(hours: hours))
                 })
             }
         }
@@ -84,6 +86,10 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
         case .notDetermined:
             waiting.append(completion)
             manager.requestWhenInUseAuthorization()
+            // Nobody may be there to answer the prompt: don't hold the fetch for it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + promptTimeout) {
+                if CLLocationManager.authorizationStatus() == .notDetermined { self.finish(self.savedLocation) }
+            }
         case .authorizedWhenInUse, .authorizedAlways:
             waiting.append(completion)
             if waiting.count == 1 { manager.requestLocation() }
@@ -116,7 +122,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
         DispatchQueue.main.async { callbacks.forEach { $0(location) } }
     }
 
-    /// The town's name for the heading, looked up once.
+    /// The town's name for the heading, looked up once; the page reads `place`.
     private func lookUpPlace(_ location: CLLocation) {
         guard place == nil, !geocoder.isGeocoding else { return }
         geocoder.reverseGeocodeLocation(location) { placemarks, _ in

@@ -15,21 +15,7 @@ final class UptimePageViewController: DashboardPageViewController {
         list.distribution = .fillEqually
         list.spacing = 8
 
-        let (rule, titleBar) = addTitleBar("Uptime · UptimeRobot")
-        let header = addHeader("Uptime")
-
-        for v in [list] as [UIView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(v)
-        }
-        let guide = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
-            list.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 22),
-            list.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
-            list.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
-            rule.topAnchor.constraint(equalTo: list.bottomAnchor, constant: 16),
-            titleBar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
-        ])
+        fill(addFullPage(title: "Uptime", bar: "Uptime · UptimeRobot"), with: list)
 
         startFetching()
     }

@@ -1,7 +1,7 @@
 import UIKit
 
 /// Load and health of the k3s cluster "skylar-technology", from Grafana Cloud.
-/// Top half: LOAD | SERVICES panels. Bottom half: 24 h graphs and operations rows.
+/// A split page: LOAD | SERVICES panels on top, 24 h graphs and operations rows below.
 final class ClusterPageViewController: DashboardPageViewController {
     private let service = ClusterService()
     private var snapshot: ClusterSnapshot?
@@ -25,17 +25,15 @@ final class ClusterPageViewController: DashboardPageViewController {
         bottom.setCustomSpacing(20, after: cpuGraph)
         bottom.setCustomSpacing(24, after: memGraph)
 
-        // Panels and title bar like the Steps & Claude page.
-        let (rule, _) = addPanels(loadPanel, servicesPanel, title: "Cluster · skylar-technology")
+        let lower = addSplitPage(left: loadPanel, right: servicesPanel, bar: "Cluster · skylar-technology")
         bottom.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottom)
-        let guide = view.safeAreaLayoutGuide
         let graphHeight: CGFloat = 110
         NSLayoutConstraint.activate([
-            bottom.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 20),
-            bottom.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
-            bottom.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
-            bottom.bottomAnchor.constraint(lessThanOrEqualTo: guide.bottomAnchor, constant: -8),
+            bottom.topAnchor.constraint(equalTo: lower.topAnchor),
+            bottom.leadingAnchor.constraint(equalTo: lower.leadingAnchor),
+            bottom.trailingAnchor.constraint(equalTo: lower.trailingAnchor),
+            bottom.bottomAnchor.constraint(lessThanOrEqualTo: lower.bottomAnchor),
             cpuGraph.heightAnchor.constraint(equalToConstant: graphHeight + 26),
             memGraph.heightAnchor.constraint(equalToConstant: graphHeight + 26),
         ])

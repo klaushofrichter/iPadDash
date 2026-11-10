@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		036A0C43308FD30C0020D852 /* iPadDash.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iPadDash.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		03AA0C02308FD30C0020D852 /* iPadDashTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPadDashTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +17,20 @@
 			path = iPadDash;
 			sourceTree = "<group>";
 		};
+		03AA0C03308FD30C0020D852 /* iPadDashTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = iPadDashTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		036A0C40308FD30C0020D852 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		03AA0C05308FD30C0020D852 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
 			);
@@ -31,6 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				036A0C45308FD30C0020D852 /* iPadDash */,
+				03AA0C03308FD30C0020D852 /* iPadDashTests */,
 				036A0C44308FD30C0020D852 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -39,6 +51,7 @@
 			isa = PBXGroup;
 			children = (
 				036A0C43308FD30C0020D852 /* iPadDash.app */,
+				03AA0C02308FD30C0020D852 /* iPadDashTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,7 +77,46 @@
 			productReference = 036A0C43308FD30C0020D852 /* iPadDash.app */;
 			productType = "com.apple.product-type.application";
 		};
+		03AA0C01308FD30C0020D852 /* iPadDashTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 03AA0C0B308FD30C0020D852 /* Build configuration list for PBXNativeTarget "iPadDashTests" */;
+			buildPhases = (
+				03AA0C04308FD30C0020D852 /* Sources */,
+				03AA0C05308FD30C0020D852 /* Frameworks */,
+				03AA0C06308FD30C0020D852 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				03AA0C08308FD30C0020D852 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				03AA0C03308FD30C0020D852 /* iPadDashTests */,
+			);
+			name = iPadDashTests;
+			productName = iPadDashTests;
+			productReference = 03AA0C02308FD30C0020D852 /* iPadDashTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		03AA0C07308FD30C0020D852 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 036A0C3B308FD30C0020D852 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 036A0C42308FD30C0020D852;
+			remoteInfo = iPadDash;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		03AA0C08308FD30C0020D852 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 036A0C42308FD30C0020D852 /* iPadDash */;
+			targetProxy = 03AA0C07308FD30C0020D852 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		036A0C3B308FD30C0020D852 /* Project object */ = {
@@ -76,6 +128,10 @@
 				TargetAttributes = {
 					036A0C42308FD30C0020D852 = {
 						CreatedOnToolsVersion = 27.1;
+					};
+					03AA0C01308FD30C0020D852 = {
+						CreatedOnToolsVersion = 27.1;
+						TestTargetID = 036A0C42308FD30C0020D852;
 					};
 				};
 			};
@@ -94,6 +150,7 @@
 			projectRoot = "";
 			targets = (
 				036A0C42308FD30C0020D852 /* iPadDash */,
+				03AA0C01308FD30C0020D852 /* iPadDashTests */,
 			);
 		};
 /* End PBXProject section */
@@ -104,10 +161,20 @@
 			files = (
 			);
 		};
+		03AA0C06308FD30C0020D852 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		036A0C3F308FD30C0020D852 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		03AA0C04308FD30C0020D852 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
 			);
@@ -319,6 +386,46 @@
 			};
 			name = Release;
 		};
+		03AA0C09308FD30C0020D852 /* Debug configuration for PBXNativeTarget "iPadDashTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q8NP7LKH8R;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.klaushofrichter.iPadDashTests;
+				SDKROOT = iphoneos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/iPadDash.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/iPadDash";
+			};
+			name = Debug;
+		};
+		03AA0C0A308FD30C0020D852 /* Release configuration for PBXNativeTarget "iPadDashTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q8NP7LKH8R;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.klaushofrichter.iPadDashTests;
+				SDKROOT = iphoneos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/iPadDash.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/iPadDash";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -335,6 +442,14 @@
 			buildConfigurations = (
 				036A0C4F308FD30D0020D852 /* Debug configuration for PBXNativeTarget "iPadDash" */,
 				036A0C50308FD30D0020D852 /* Release configuration for PBXNativeTarget "iPadDash" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		03AA0C0B308FD30C0020D852 /* Build configuration list for PBXNativeTarget "iPadDashTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				03AA0C09308FD30C0020D852 /* Debug configuration for PBXNativeTarget "iPadDashTests" */,
+				03AA0C0A308FD30C0020D852 /* Release configuration for PBXNativeTarget "iPadDashTests" */,
 			);
 			defaultConfigurationName = Release;
 		};

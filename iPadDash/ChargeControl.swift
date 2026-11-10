@@ -64,12 +64,12 @@ final class KasaPlug {
         connection.start(queue: queue)
     }
 
-    private static func scramble(_ data: Data) -> Data {
+    static func scramble(_ data: Data) -> Data {
         var key: UInt8 = 171
         return Data(data.map { byte -> UInt8 in key ^= byte; return key })
     }
 
-    private static func unscramble(_ data: Data) -> Data {
+    static func unscramble(_ data: Data) -> Data {
         var key: UInt8 = 171
         return Data(data.map { byte -> UInt8 in defer { key = byte }; return key ^ byte })
     }
@@ -107,6 +107,10 @@ final class ChargeControl {
     private var plugOnSince: Date?
     private var plug: KasaPlug?
     private var busy = false
+    /// Waiting for the check under way.
+    private var checkCompletions: [() -> Void] = []
+    /// Set when the plug is changed during a check: check the new one right after.
+    private var checkAgain = false
     private var timer: Timer?
 
     var isOn: Bool { return plug != nil }
@@ -226,22 +230,27 @@ final class ChargeControl {
         lastError = nil
         failingSince = nil
         changed()
-        check()
+        if busy { checkAgain = true } else { check() }
     }
 
-    /// Reads the plug and switches it if the battery calls for it.
-    func check() {
-        guard let plug = plug, !busy else { return }
+    /// Reads the plug and switches it if the battery calls for it. `completion` runs
+    /// once the plug has answered or failed to (at once when no plug is set up).
+    func check(completion: (() -> Void)? = nil) {
+        if let completion = completion { checkCompletions.append(completion) }
+        guard let plug = plug else { return finishCompletions() }
+        guard !busy else { return }
         busy = true
         lastCheck = Date()
         plug.send(["system": ["get_sysinfo": [:]], "count_down": ["get_rules": [:]]]) { result in
             switch result {
             case .failure(let error):
                 self.failed(error)
+                self.done()
             case .success(let json):
                 guard let info = (json["system"] as? [String: Any])?["get_sysinfo"] as? [String: Any],
                       let relay = (info["relay_state"] as? NSNumber)?.intValue else {
-                    return self.failed(ServiceError.badResponse)
+                    self.failed(ServiceError.badResponse)
+                    return self.done()
                 }
                 let rules = ((json["count_down"] as? [String: Any])?["get_rules"] as? [String: Any])?["rule_list"]
                     as? [[String: Any]] ?? []
@@ -313,12 +322,24 @@ final class ChargeControl {
     private func failed(_ error: Error) {
         lastError = error.localizedDescription
         if failingSince == nil { failingSince = Date() }
-        busy = false
         changed()
     }
 
+    /// The check is over, whatever came of it.
     private func done() {
         busy = false
+        // The plug was changed meanwhile: those waiting get the new plug's answer.
+        if checkAgain {
+            checkAgain = false
+            return check()
+        }
+        finishCompletions()
+    }
+
+    private func finishCompletions() {
+        let completions = checkCompletions
+        checkCompletions = []
+        completions.forEach { $0() }
     }
 
     private func changed() {

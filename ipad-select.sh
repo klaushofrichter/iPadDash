@@ -23,9 +23,13 @@ ipad_color() {
     esac
 }
 
-# Other devices (an iPhone on Wi-Fi) are left out.
+# Other devices (an iPhone on Wi-Fi) are left out. A device that doesn't answer is
+# asked once more, then left out with a warning.
 is_ipad() {
-    [ "$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null)" = iPad ]
+    class=$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null) ||
+        class=$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null) ||
+        { echo "warning: $1 doesn't answer; left out" >&2; return 1; }
+    [ "$class" = iPad ]
 }
 
 select_ipads() {

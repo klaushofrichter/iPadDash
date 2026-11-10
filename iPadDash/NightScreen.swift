@@ -16,8 +16,7 @@ final class NightScreen {
     private var window: UIWindow?
     private let clock = UILabel()
     private var timer: Timer?
-    /// The brightness before the night, given back in the morning when the camera
-    /// doesn't set it.
+    /// The brightness before the night, given back in the morning.
     private var dayBrightness: CGFloat?
 
     func start() {
@@ -53,11 +52,10 @@ final class NightScreen {
 
     private func hide() {
         isActive = false
-        if AmbientLight.shared.isOn {
-            AmbientLight.shared.start()   // samples the room again and sets the brightness
-        } else if let brightness = dayBrightness {
-            UIScreen.main.brightness = brightness
-        }
+        // Back to the brightness before the night first: the camera sample that
+        // follows can fail, and must not leave the screen dark all day.
+        if let brightness = dayBrightness { UIScreen.main.brightness = brightness }
+        if AmbientLight.shared.isOn { AmbientLight.shared.start() }   // samples the room again
         guard let window = window else { return }
         UIView.animate(withDuration: 1.5, animations: { window.alpha = 0 }) { _ in
             if !self.isActive { window.isHidden = true }

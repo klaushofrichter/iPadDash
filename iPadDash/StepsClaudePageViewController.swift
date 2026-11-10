@@ -1,7 +1,7 @@
 import UIKit
 
-/// The TRMNL "Steps & Claude" design in the top half (steps panel |
-/// divider | Claude panel, title bar below). The bottom half is reserved.
+/// A split page: the TRMNL "Steps & Claude" design on top (steps panel |
+/// divider | Claude panel). The lower half is reserved.
 final class StepsClaudePageViewController: DashboardPageViewController {
     // Pace depends on the clock, so re-evaluate between fetches too.
     override var redrawInterval: TimeInterval? { return 30 }
@@ -19,18 +19,8 @@ final class StepsClaudePageViewController: DashboardPageViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // TRMNL's title bar: plugin name on the left, last update on the right.
-        let (rule, _) = addPanels(stepsPanel, claudePanel, title: "Steps & Claude")
-        let reserved = ReservedAreaView(text: "Lower half · reserved")
-        reserved.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(reserved)
-        let guide = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
-            reserved.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 16),
-            reserved.leadingAnchor.constraint(equalTo: rule.leadingAnchor),
-            reserved.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
-            reserved.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -8),
-        ])
+        let lower = addSplitPage(left: stepsPanel, right: claudePanel, bar: "Steps & Claude")
+        fill(lower, with: ReservedAreaView(text: "Lower half · reserved"))
 
         #if DEBUG
         // simctl launch ... with SIMCTL_CHILD_IPADDASH_DEMO=1 shows fixed sample data.

@@ -1,0 +1,154 @@
+import XCTest
+@testable import iPadDash
+
+/// The pace math and the texts made from numbers and ages.
+final class ModelTests: XCTestCase {
+    private let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Chicago")!
+        return c
+    }()
+
+    private func time(_ hour: Int, _ minute: Int = 0) -> Date {
+        return calendar.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: hour, minute: minute))!
+    }
+
+    // MARK: Texts
+
+    func testDurationText() {
+        XCTAssertEqual(durationText(-5), "0 minutes")
+        XCTAssertEqual(durationText(59), "0 minutes")
+        XCTAssertEqual(durationText(60), "1 minute")
+        XCTAssertEqual(durationText(25 * 60), "25 minutes")
+        XCTAssertEqual(durationText(3600), "1 hour")
+        XCTAssertEqual(durationText(8 * 3600 + 120), "8 hours")
+        XCTAssertEqual(durationText(24 * 3600), "1 day")
+        XCTAssertEqual(durationText(3 * 24 * 3600), "3 days")
+    }
+
+    func testAgeText() {
+        XCTAssertEqual(ageText(-10), "0 min")
+        XCTAssertEqual(ageText(38 * 60), "38 min")
+        XCTAssertEqual(ageText(6 * 3600), "6 h")
+        XCTAssertEqual(ageText(47 * 3600), "47 h")
+        XCTAssertEqual(ageText(2 * 86400), "2 d")
+    }
+
+    func testFreshnessText() {
+        let now = time(12)
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(60), now: now), "updated just now")
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-4 * 60), now: now), "updated just now")
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-12 * 60), now: now), "updated 12 min ago")
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-3600), now: now), "updated 1 hour ago")
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-3 * 3600), now: now), "updated 3 hours ago")
+        XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-6 * 3600), now: now), "DATA IS OUTDATED")
+    }
+
+    func testNumbers() {
+        XCTAssertEqual(groupedNumber(1314), "1,314")
+        XCTAssertEqual(groupedNumber(7), "7")
+        XCTAssertEqual(percentText(41), "41")
+        XCTAssertEqual(percentText(41.25), "41.2")
+    }
+
+    // MARK: Steps
+
+    func testStepsPaceFollowsTheWindow() {
+        func pace(_ hour: Int, _ minute: Int = 0) -> Int {
+            let now = time(hour, minute)
+            return StepsSummary(reading: StepsReading(timestamp: now, steps: 0), now: now, calendar: calendar).pacePct
+        }
+        XCTAssertEqual(pace(5), 0)          // before 6:00
+        XCTAssertEqual(pace(6), 0)
+        XCTAssertEqual(pace(13, 30), 50)    // half of 6:00–21:00
+        XCTAssertEqual(pace(21), 100)
+        XCTAssertEqual(pace(23), 100)       // after the window
+    }
+
+    func testStepsStatusAndHero() {
+        let now = time(13, 30)   // pace 50 %
+        func summary(_ steps: Int) -> StepsSummary {
+            return StepsSummary(reading: StepsReading(timestamp: now, steps: steps), now: now, calendar: calendar)
+        }
+        XCTAssertEqual(summary(5_300).status, "Ahead of pace")
+        XCTAssertEqual(summary(5_200).status, "On pace")       // within 2 points
+        XCTAssertEqual(summary(4_800).status, "On pace")
+        XCTAssertEqual(summary(4_700).status, "Behind pace")
+        XCTAssertEqual(summary(4_455).hero, "5,600 to go")     // rounded up to the next 100
+        XCTAssertEqual(summary(11_150).hero, "1,200 above")
+        XCTAssertEqual(summary(11_150).actualPct, 112)         // not capped here
+    }
+
+    func testStepsStaleAfter130Minutes() {
+        let now = time(12)
+        func stale(_ minutes: Double) -> Bool {
+            let reading = StepsReading(timestamp: now.addingTimeInterval(-minutes * 60), steps: 100)
+            return StepsSummary(reading: reading, now: now, calendar: calendar).stale
+        }
+        XCTAssertFalse(stale(130))
+        XCTAssertTrue(stale(131))
+    }
+
+    // MARK: Claude
+
+    func testUsageWindowVerdicts() {
+        let now = time(12)
+        func window(actual: Double?, hoursLeft: Double?) -> UsageWindow {
+            return UsageWindow(name: "Session", actual: actual,
+                               reset: hoursLeft.map { now.addingTimeInterval($0 * 3600) }, windowHours: 5, now: now)
+        }
+        // 2.5 of 5 hours left: pace 50 %.
+        XCTAssertEqual(window(actual: 60, hoursLeft: 2.5).status, "Overuse")
+        XCTAssertTrue(window(actual: 60, hoursLeft: 2.5).overuse)
+        XCTAssertEqual(window(actual: 51, hoursLeft: 2.5).status, "On pace")
+        XCTAssertEqual(window(actual: 4, hoursLeft: 2.5).status, "Underuse")
+        XCTAssertEqual(window(actual: 4, hoursLeft: 2.5).caption, "pace 50% / actual 4%")
+        // The reset instant is still a live window; past it, the window has ended.
+        XCTAssertFalse(window(actual: 90, hoursLeft: 0).expired)
+        let ended = window(actual: 90, hoursLeft: -1)
+        XCTAssertTrue(ended.expired)
+        XCTAssertEqual(ended.status, "Expired")
+        XCTAssertEqual(ended.caption, "window ended / actual 90%")
+        // Nothing reported.
+        XCTAssertFalse(window(actual: nil, hoursLeft: 2).available)
+        XCTAssertFalse(window(actual: 10, hoursLeft: nil).available)
+    }
+
+    func testClaudeHero() {
+        let now = time(12)
+        func hero(weekly: Double?, hoursLeft: Double) -> String {
+            let reading = ClaudeReading(timestamp: now, session: 10, weekly: weekly,
+                                        sessionReset: now.addingTimeInterval(3600),
+                                        weeklyReset: now.addingTimeInterval(hoursLeft * 3600))
+            return ClaudeSummary(reading: reading, now: now).hero
+        }
+        XCTAssertEqual(hero(weekly: 36, hoursLeft: 84), "14% Underuse")   // pace 50 %
+        XCTAssertEqual(hero(weekly: 60, hoursLeft: 84), "10% Overuse")
+        XCTAssertEqual(hero(weekly: 80, hoursLeft: -2), "80% used")
+        XCTAssertEqual(hero(weekly: nil, hoursLeft: 84), "n/a")
+    }
+
+    // MARK: Network helpers
+
+    func testKasaScrambleRoundTrip() {
+        let plain = Data(#"{"system":{"get_sysinfo":{}}}"#.utf8)
+        let scrambled = KasaPlug.scramble(plain)
+        XCTAssertNotEqual(scrambled, plain)
+        // The first byte is the key 171 XOR "{".
+        XCTAssertEqual(scrambled.first, 171 ^ UInt8(ascii: "{"))
+        XCTAssertEqual(KasaPlug.unscramble(scrambled), plain)
+        XCTAssertEqual(KasaPlug.unscramble(KasaPlug.scramble(Data())), Data())
+    }
+
+    func testQueryEncodesPlus() {
+        let built = url(URL(string: "https://example.com/api")!, query: ["tz": "+01:00", "a": "x y"])
+        XCTAssertEqual(built.absoluteString, "https://example.com/api?a=x%20y&tz=%2B01:00")
+    }
+
+    func testOfflineErrorsAreMarked() {
+        XCTAssertTrue(PageAlert("GitHub", error: URLError(.notConnectedToInternet)).offline)
+        XCTAssertTrue(PageAlert("GitHub", error: URLError(.timedOut)).offline)
+        XCTAssertFalse(PageAlert("GitHub", error: ServiceError.http(500, nil)).offline)
+        XCTAssertEqual(PageAlert("GitHub", error: ServiceError.http(500, "boom")).detail, "HTTP 500: boom")
+    }
+}
