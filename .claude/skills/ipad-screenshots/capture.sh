@@ -1,5 +1,5 @@
 #!/bin/sh
-# Screenshot every iPadDash page on the USB-connected iPad, waiting for
+# Screenshot every iPadDash page on an iPad (USB or Wi-Fi), waiting for
 # auto-move to cycle through them. Writes page-1.png ... page-N.png to OUT_DIR.
 #
 # Usage: [IPAD=silver|black|<UDID prefix>] capture.sh OUT_DIR [PAGES=4] [TIMEOUT_SECONDS=600]
@@ -13,6 +13,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/../../../ipad-select.sh"
 UDID=$(select_ipads "${IPAD:-}")
 [ "$(echo "$UDID" | wc -l)" -eq 1 ] || { echo "error: name one iPad, not several" >&2; exit 1; }
+LINK=$(ipad_link "$UDID")
+shot() { idevicescreenshot $LINK -u "$UDID" "$1" >/dev/null; }
 TOOL=${TMPDIR:-/tmp}/ipaddash-pagedot
 [ "$TOOL" -nt "$HERE/pagedot.swift" ] || swiftc -O "$HERE/pagedot.swift" -o "$TOOL"
 
@@ -22,12 +24,12 @@ end=$(( $(date +%s) + TIMEOUT ))
 have() { ls "$OUT" | grep -c '^page-[0-9]*\.png$' || true; }
 
 while [ "$(have)" -lt "$PAGES" ] && [ "$(date +%s)" -lt "$end" ]; do
-    idevicescreenshot $(ipad_link "$UDID") -u "$UDID" "$OUT/.probe.png" >/dev/null
+    shot "$OUT/.probe.png"
     p=$("$TOOL" "$OUT/.probe.png" "$PAGES")
     if [ "$p" != 0 ] && [ ! -f "$OUT/page-$p.png" ]; then
         # Let the fade settle, then keep the shot only if it is still that page.
         sleep 2
-        idevicescreenshot $(ipad_link "$UDID") -u "$UDID" "$OUT/.probe2.png" >/dev/null
+        shot "$OUT/.probe2.png"
         [ "$("$TOOL" "$OUT/.probe2.png" "$PAGES")" = "$p" ] && mv "$OUT/.probe2.png" "$OUT/page-$p.png" \
             && echo "page $p $(date +%H:%M:%S)"
     fi

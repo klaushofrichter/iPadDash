@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ./deploy.sh [IPAD] [KEY=VALUE...]   build, patch, sign, install, launch
-#                                       (KEY=VALUE are settings the app saves, e.g. chargePlug=192.168.1.43)
+#                                       (KEY=VALUE are settings the app saves, e.g. chargePlug=Garland)
 #   ./deploy.sh --check    unsigned build + checks only (no iPad or Apple ID needed)
 # IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
 # left out when only one iPad is connected.

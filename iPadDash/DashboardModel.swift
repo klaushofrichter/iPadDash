@@ -136,7 +136,12 @@ func freshnessText(since timestamp: Date, now: Date) -> String {
 func durationText(_ seconds: TimeInterval) -> String {
     let minutes = max(Int(seconds), 0) / 60
     let (count, unit) = minutes < 60 ? (minutes, "minute") : minutes < 24 * 60 ? (minutes / 60, "hour") : (minutes / (24 * 60), "day")
-    return "\(count) \(unit)\(count == 1 ? "" : "s")"
+    return counted(count, unit)
+}
+
+/// "1 PR" / "3 PRs".
+func counted(_ n: Int, _ noun: String) -> String {
+    return "\(n) \(noun)\(n == 1 ? "" : "s")"
 }
 
 private let groupedFormatter: NumberFormatter = {

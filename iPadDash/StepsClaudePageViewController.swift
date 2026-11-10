@@ -53,18 +53,12 @@ final class StepsClaudePageViewController: DashboardPageViewController {
         let group = DispatchGroup()
         group.enter()
         service.fetchSteps { result in
-            switch result {
-            case .success(let reading): self.stepsReading = reading; self.stepsError = nil
-            case .failure(let error): self.stepsError = error
-            }
+            result.store(in: &self.stepsReading, error: &self.stepsError)
             group.leave()
         }
         group.enter()
         service.fetchClaude { result in
-            switch result {
-            case .success(let reading): self.claudeReading = reading; self.claudeError = nil
-            case .failure(let error): self.claudeError = error
-            }
+            result.store(in: &self.claudeReading, error: &self.claudeError)
             group.leave()
         }
         group.notify(queue: .main, execute: completion)

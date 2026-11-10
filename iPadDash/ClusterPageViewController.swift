@@ -43,10 +43,7 @@ final class ClusterPageViewController: DashboardPageViewController {
 
     override func load(completion: @escaping () -> Void) {
         service.fetchSnapshot { result in
-            switch result {
-            case .success(let snapshot): self.snapshot = snapshot; self.lastError = nil
-            case .failure(let error): self.lastError = error
-            }
+            result.store(in: &self.snapshot, error: &self.lastError)
             completion()
         }
     }

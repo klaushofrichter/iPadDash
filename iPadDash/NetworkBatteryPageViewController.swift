@@ -144,7 +144,8 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         address = NetworkBatteryPageViewController.ipv4Address()
     }
 
-    private static func ipv4Address() -> String? {
+    /// The iPad's own IPv4 address, Wi-Fi first.
+    static func ipv4Address() -> String? {
         var first: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&first) == 0 else { return nil }
         defer { freeifaddrs(first) }

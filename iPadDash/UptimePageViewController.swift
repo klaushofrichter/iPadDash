@@ -47,7 +47,7 @@ final class UptimePageViewController: DashboardPageViewController {
         if let monitors = monitors {
             let down = monitors.filter { $0.status == .down }
             heroLabel.set(down.isEmpty ? "All systems operational"
-                                       : "\(down.count) \(down.count == 1 ? "service" : "services") down")
+                                       : "\(counted(down.count, "service")) down")
             heroLabel.alert = !down.isEmpty
             let ratios = monitors.compactMap { $0.uptime30 }
             let average = ratios.isEmpty ? "" : String(format: " · %.3f%% average uptime, 30 days",

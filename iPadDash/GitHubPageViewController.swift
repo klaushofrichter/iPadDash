@@ -105,7 +105,7 @@ final class GitHubPageViewController: DashboardPageViewController {
     override func render() {
         let now = Date()
         if let s = snapshot {
-            heroLabel.set(s.openCount == 1 ? "1 open pull request" : "\(s.openCount) open pull requests")
+            heroLabel.set(counted(s.openCount, "open pull request"))
             summaryLabel.set("\(groupedNumber(s.merged24h)) merged in the last 24 h · \(groupedNumber(s.merged30d)) in 30 days")
             let recent: String
             switch s.merged24h {
@@ -118,7 +118,7 @@ final class GitHubPageViewController: DashboardPageViewController {
             noOpenLabel.isHidden = !top.isEmpty
             // Unused slots collapse, so the merge list below gets the space.
             repoRows.showRows(top) { (row: KeyValueRow, entry) in
-                let count = entry.count == 1 ? "1 PR" : "\(entry.count) PRs"
+                let count = counted(entry.count, "PR")
                 // The age of the oldest open PR.
                 let age = entry.oldest.map { " · " + durationText(now.timeIntervalSince($0)) } ?? ""
                 row.set(entry.repo, count + age)

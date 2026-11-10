@@ -95,7 +95,8 @@ enum Settings {
         }
     }
 
-    /// Address of the Kasa plug the charger is plugged into; empty = no charge control.
+    /// The Kasa plug the charger is plugged into: its name in the Kasa app ("Garland"),
+    /// which the app looks up on the network, or its IP address; empty = no charge control.
     private static let chargePlugKey = "chargePlug"
 
     static var chargePlug: String {
@@ -107,7 +108,7 @@ enum Settings {
         }
     }
 
-    /// Saves settings given as launch arguments, "chargePlug=192.168.1.43", as if
+    /// Saves settings given as launch arguments, "chargePlug=Garland", as if
     /// entered on the Settings page, so deploy.sh can set them without touching the iPad.
     static func applyLaunchArguments() {
         for argument in ProcessInfo.processInfo.arguments.dropFirst() {

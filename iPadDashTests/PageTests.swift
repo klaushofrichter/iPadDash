@@ -152,7 +152,37 @@ final class PageTests: XCTestCase {
     }
 
     func testSummaryShowsEverythingWithoutRedItems() {
-        XCTAssertEqual(sectionCounts(summary(redItems: 0)), Array(repeating: 4, count: 6))
+        let page = summary(redItems: 0)
+        XCTAssertEqual(sectionCounts(page), Array(repeating: 4, count: 6))
+        // With nothing red, the clock area starts where the red items would.
+        let withRed = summary(redItems: 2)
+        _ = sectionCounts(withRed, passes: 1)
+        XCTAssertLessThan(page.lowerArea.frame.minY, withRed.lowerArea.frame.minY)
+    }
+
+    func testSummaryWithoutForecastShowsNoGraph() {
+        let page = summary(redItems: 0)
+        page.forecast = nil
+        XCTAssertEqual(sectionCounts(page, passes: 2), [3, 3], "clock, date and the weather note, no graph")
+    }
+
+    func testSummaryGoesBackAndForthWithTheRedItems() {
+        let source = FakePage()
+        let page = SummaryPageViewController()
+        page.sources = [source]
+        page.loadViewIfNeeded()
+        let now = Date()
+        page.forecast = WeatherForecast(hours: (0..<12).map {
+            HourlyTemperature(time: now.addingTimeInterval(Double($0) * 3600), celsius: 15 + Double($0))
+        })
+        XCTAssertEqual(sectionCounts(page, passes: 1), [4])
+        let clear = page.lowerArea.frame.minY
+        source.alerts = (0..<9).map { PageAlert("Item \($0)", "red") }
+        XCTAssertLessThan(sectionCounts(page, passes: 1)[0], 4)
+        XCTAssertGreaterThan(page.lowerArea.frame.minY, clear)
+        source.alerts = []
+        XCTAssertEqual(sectionCounts(page, passes: 1), [4], "everything is back once nothing is red")
+        XCTAssertEqual(page.lowerArea.frame.minY, clear, accuracy: 0.5)
     }
 
     /// The clipped clock of November 2026: with many red items the graph was dropped

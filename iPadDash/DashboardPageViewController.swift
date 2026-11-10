@@ -21,6 +21,7 @@ struct PageAlert: Equatable {
         let networkCodes: [URLError.Code] = [.notConnectedToInternet, .networkConnectionLost, .timedOut,
                                              .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
                                              .internationalRoamingOff, .dataNotAllowed]
+        if case ServiceError.noResponse = error { offline = true; return }
         offline = (error as? URLError).map { networkCodes.contains($0.code) } ?? false
     }
 }

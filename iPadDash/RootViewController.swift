@@ -230,7 +230,10 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                 self?.restartAutoMove()   // back to the normal cycle, starting full
             }
             frozenReloadTimer = Timer.scheduledTimer(withTimeInterval: frozenReloadInterval, repeats: true) { [weak self] _ in
-                self?.pagesToReload.forEach { $0.reloadNow() }
+                // Pages on a schedule of their own (GitHub hourly, the weather) keep to it.
+                guard let self = self else { return }
+                let pages = self.pagesToReload
+                (pages.count == 1 ? pages : pages.filter { $0.fixedFetchInterval == nil }).forEach { $0.reloadNow() }
             }
             return
         }
@@ -336,7 +339,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         battery.setNeedsDisplay()
         applyTheme(to: view)
         // All pages, including those out of the rotation right now.
-        ([summary] + dataPages).filter { $0.isViewLoaded }.forEach { applyTheme(to: $0.view) }
+        // (The page showing is inside `view` and done already.)
+        ([summary] + dataPages).filter { $0.isViewLoaded && $0.view.window == nil }.forEach { applyTheme(to: $0.view) }
     }
 
     // MARK: - Gestures

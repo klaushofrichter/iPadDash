@@ -8,12 +8,22 @@ import UIKit
 /// instead, so the plugs' firmware should not be updated.
 final class KasaPlug {
     let host: String
-    private let queue = DispatchQueue(label: "KasaPlug")
+    /// One queue for all plugs: a search talks to a whole network of addresses at once.
+    private static let queue = DispatchQueue(label: "KasaPlug")
 
     init(host: String) { self.host = host }
 
-    /// Sends one command; completes on the main queue.
-    func send(_ command: [String: Any], completion: @escaping (Result<[String: Any], Error>) -> Void) {
+    // The commands, and the status in the answer to `sysinfoQuery`.
+    static let sysinfoQuery: [String: Any] = ["system": ["get_sysinfo": [:]]]
+    static let clearRules: [String: Any] = ["count_down": ["delete_all_rules": [:]]]
+    static func relay(_ on: Bool) -> [String: Any] { return ["system": ["set_relay_state": ["state": on ? 1 : 0]]] }
+    static func sysinfo(in json: [String: Any]) -> [String: Any]? {
+        return (json["system"] as? [String: Any])?["get_sysinfo"] as? [String: Any]
+    }
+
+    /// Sends one command; completes on the main queue, after `timeout` at the latest.
+    func send(_ command: [String: Any], timeout: TimeInterval = 6,
+              completion: @escaping (Result<[String: Any], Error>) -> Void) {
         guard let port = NWEndpoint.Port(rawValue: 9999),
               let body = try? JSONSerialization.data(withJSONObject: command) else {
             return completion(.failure(ServiceError.badResponse))
@@ -26,7 +36,7 @@ final class KasaPlug {
             connection.cancel()
             DispatchQueue.main.async { completion(result) }
         }
-        queue.asyncAfter(deadline: .now() + 6) { finish(.failure(ServiceError.api("no answer"))) }
+        KasaPlug.queue.asyncAfter(deadline: .now() + timeout) { finish(.failure(ServiceError.api("no answer"))) }
 
         connection.stateUpdateHandler = { state in
             switch state {
@@ -61,7 +71,7 @@ final class KasaPlug {
             }
         }
         receive()
-        connection.start(queue: queue)
+        connection.start(queue: KasaPlug.queue)
     }
 
     static func scramble(_ data: Data) -> Data {
@@ -75,8 +85,54 @@ final class KasaPlug {
     }
 }
 
+/// Finds a Kasa plug by the name it has in the Kasa app ("Garland"): the router may
+/// hand a plug a new address at any time, the name stays.
+enum KasaSearch {
+    /// Whether `text` is an IPv4 address rather than a plug's name.
+    static func isAddress(_ text: String) -> Bool {
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts.allSatisfy { part in
+            !part.isEmpty && part.count <= 3 && part.allSatisfy({ $0.isASCII && $0.isNumber }) && Int(part)! <= 255
+        }
+    }
+
+    /// The other addresses of the /24 network `address` is in (home networks are).
+    static func neighbors(of address: String) -> [String] {
+        guard isAddress(address) else { return [] }
+        let parts = address.split(separator: ".")
+        let prefix = parts.prefix(3).joined(separator: ".")
+        return (1...254).filter { $0 != Int(parts[3]) }.map { "\(prefix).\($0)" }
+    }
+
+    /// Whether a plug's name matches the one in the setting: case and outer spaces don't count.
+    static func matches(_ alias: String, _ name: String) -> Bool {
+        func plain(_ s: String) -> String { return s.trimmingCharacters(in: .whitespaces).lowercased() }
+        return plain(alias) == plain(name)
+    }
+
+    /// Asks every address on the iPad's network for its Kasa name (a read-only
+    /// status request) and completes on the main queue with the address of the
+    /// plug called `name`, or nil if none answers to it.
+    static func find(named name: String, completion: @escaping (String?) -> Void) {
+        guard let own = NetworkBatteryPageViewController.ipv4Address() else { return completion(nil) }
+        let group = DispatchGroup()
+        var found: String?
+        for host in neighbors(of: own) {
+            group.enter()
+            KasaPlug(host: host).send(KasaPlug.sysinfoQuery, timeout: 4) { result in
+                if case .success(let json) = result,
+                   let alias = KasaPlug.sysinfo(in: json)?["alias"] as? String, matches(alias, name) {
+                    found = found ?? host
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { completion(found) }
+    }
+}
+
 /// Keeps the battery between 40 % and 70 % by switching the Kasa plug the charger
-/// is plugged into (Settings.chargePlug): on at 40 %, off at 70 %. A narrow band in
+/// is plugged into (Settings.chargePlug, the plug's name or its address): on at 40 %, off at 70 %. A narrow band in
 /// the middle keeps a battery that is always near power from sitting at a high
 /// charge, which ages it and can make it swell. Whenever the plug
 /// is off, a countdown rule on the plug itself turns it back on within two hours
@@ -106,14 +162,28 @@ final class ChargeControl {
     private var failingSince: Date?
     private var plugOnSince: Date?
     private var plug: KasaPlug?
-    private var busy = false
+    /// The setting the plug was made from: a name or an address; empty = none.
+    private var setting = ""
+    /// The plug's name when the setting is one; its address is then searched for.
+    private var plugName: String? { return setting.isEmpty || KasaSearch.isAddress(setting) ? nil : setting }
+    private var searching = false
+    private var lastSearch = Date.distantPast
+    /// A plug that stops answering is searched for again this far apart: five minutes
+    /// at first, doubling up to an hour while it stays lost (a search asks every
+    /// address on the network).
+    private var searchInterval = ChargeControl.firstSearchInterval
+    private static let firstSearchInterval: TimeInterval = 5 * 60
+    /// The address last found for a plug's name, kept across launches.
+    private let foundHostKey = "chargePlugFoundHost", foundNameKey = "chargePlugFoundName"
+    /// The plug the check under way is talking to; nil when none runs.
+    private var checking: KasaPlug?
     /// Waiting for the check under way.
     private var checkCompletions: [() -> Void] = []
-    /// Set when the plug is changed during a check: check the new one right after.
-    private var checkAgain = false
     private var timer: Timer?
 
-    var isOn: Bool { return plug != nil }
+    var isOn: Bool { return !setting.isEmpty }
+    /// The address in use, e.g. the one found for the plug's name.
+    var plugAddress: String? { return plug?.host }
 
     /// 0...1, or nil where iOS doesn't know (simulator).
     var batteryLevel: Float? {
@@ -193,6 +263,9 @@ final class ChargeControl {
     /// `showingError`, the error itself instead of "unreachable".
     func plugStatusText(showingError: Bool = false) -> String {
         guard isOn else { return "not set up" }
+        if plug == nil, let name = plugName {
+            return searching ? "searching for “\(name)”…" : "“\(name)” not found on this network"
+        }
         var parts: [String] = []
         if let on = plugOn { parts.append(on ? "on" : "off") }
         if let error = lastError {
@@ -215,31 +288,41 @@ final class ChargeControl {
     }
 
     @objc private func settingsChanged() {
-        let host = Settings.chargePlug
-        guard host != plug?.host ?? "" else { return }
+        guard Settings.chargePlug != setting else { return }
+        setting = Settings.chargePlug
         // Leave a plug that is no longer used switched on, without a countdown.
         if let old = plug {
-            old.send(["system": ["set_relay_state": ["state": 1]]]) { _ in
-                old.send(["count_down": ["delete_all_rules": [:]]]) { _ in }
-            }
+            old.send(KasaPlug.relay(true)) { _ in old.send(KasaPlug.clearRules) { _ in } }
         }
-        plug = host.isEmpty ? nil : KasaPlug(host: host)
+        if let name = plugName {
+            // Start from the address found last time; a failed check searches again.
+            let defaults = UserDefaults.standard
+            let known = defaults.string(forKey: foundNameKey) == name ? defaults.string(forKey: foundHostKey) : nil
+            plug = known.map { KasaPlug(host: $0) }
+            lastSearch = .distantPast
+            searchInterval = ChargeControl.firstSearchInterval
+        } else {
+            plug = setting.isEmpty ? nil : KasaPlug(host: setting)
+        }
         plugOn = nil
         plugOnSince = nil
         lastContact = nil
         lastError = nil
         failingSince = nil
         changed()
-        if busy { checkAgain = true } else { check() }
+        check()   // if one is under way, `done` checks the new plug right after
     }
 
     /// Reads the plug and switches it if the battery calls for it. `completion` runs
     /// once the plug has answered or failed to (at once when no plug is set up).
     func check(completion: (() -> Void)? = nil) {
         if let completion = completion { checkCompletions.append(completion) }
-        guard let plug = plug else { return finishCompletions() }
-        guard !busy else { return }
-        busy = true
+        guard let plug = plug else {
+            search()   // a plug set by name whose address isn't known yet
+            return finishCompletions()
+        }
+        guard checking == nil else { return }
+        checking = plug
         lastCheck = Date()
         plug.send(["system": ["get_sysinfo": [:]], "count_down": ["get_rules": [:]]]) { result in
             switch result {
@@ -247,9 +330,17 @@ final class ChargeControl {
                 self.failed(error)
                 self.done()
             case .success(let json):
-                guard let info = (json["system"] as? [String: Any])?["get_sysinfo"] as? [String: Any],
+                guard let info = KasaPlug.sysinfo(in: json),
                       let relay = (info["relay_state"] as? NSNumber)?.intValue else {
                     self.failed(ServiceError.badResponse)
+                    return self.done()
+                }
+                // The address may have gone to another Kasa plug: never switch that one.
+                if let name = self.plugName, let alias = info["alias"] as? String, !KasaSearch.matches(alias, name) {
+                    self.plug = nil
+                    self.plugOn = nil
+                    self.lastSearch = .distantPast
+                    self.failed(ServiceError.api("that address is now “\(alias)”"))   // searches for the name
                     return self.done()
                 }
                 let rules = ((json["count_down"] as? [String: Any])?["get_rules"] as? [String: Any])?["rule_list"]
@@ -279,7 +370,7 @@ final class ChargeControl {
             }
         } else if !relayOn && level <= ChargeControl.onBelow {
             setRelay(plug, on: true) {
-                plug.send(["count_down": ["delete_all_rules": [:]]]) { _ in self.done() }
+                plug.send(KasaPlug.clearRules) { _ in self.done() }
             }
         } else if !relayOn && (watchdogLeft ?? 0) < rearmBelow {
             arm(plug) { _ in self.done() }
@@ -290,7 +381,7 @@ final class ChargeControl {
 
     /// Replaces the plug's countdown rules with "turn on in two hours".
     private func arm(_ plug: KasaPlug, completion: @escaping (Bool) -> Void) {
-        plug.send(["count_down": ["delete_all_rules": [:]]]) { result in
+        plug.send(KasaPlug.clearRules) { result in
             if case .failure(let error) = result { self.failed(error); return completion(false) }
             plug.send(["count_down": ["add_rule": ["enable": 1, "delay": self.watchdogDelay,
                                                    "act": 1, "name": self.ruleName]]]) { result in
@@ -301,7 +392,7 @@ final class ChargeControl {
     }
 
     private func setRelay(_ plug: KasaPlug, on: Bool, completion: @escaping () -> Void) {
-        plug.send(["system": ["set_relay_state": ["state": on ? 1 : 0]]]) { result in
+        plug.send(KasaPlug.relay(on)) { result in
             switch result {
             case .failure(let error): self.failed(error)
             case .success: self.succeeded(relayOn: on)
@@ -323,17 +414,42 @@ final class ChargeControl {
         lastError = error.localizedDescription
         if failingSince == nil { failingSince = Date() }
         changed()
+        search()   // it may have a new address
     }
 
     /// The check is over, whatever came of it.
     private func done() {
-        busy = false
+        let checked = checking
+        checking = nil
         // The plug was changed meanwhile: those waiting get the new plug's answer.
-        if checkAgain {
-            checkAgain = false
-            return check()
-        }
+        if plug !== checked { return check() }
         finishCompletions()
+    }
+
+    /// Looks for the plug by its name, at most every `searchInterval`, and checks it
+    /// at its new address if that changed. Nothing to do for a plug set by address.
+    private func search() {
+        guard let name = plugName, !searching, Date().timeIntervalSince(lastSearch) >= searchInterval else { return }
+        searching = true
+        lastSearch = Date()
+        changed()
+        KasaSearch.find(named: name) { host in
+            self.searching = false
+            guard self.plugName == name else { return }   // the setting changed meanwhile
+            guard let host = host else {
+                self.searchInterval = min(self.searchInterval * 2, 3600)
+                // (`failed` searches again, which the interval just set puts off.)
+                if self.plug == nil { self.failed(ServiceError.api("“\(name)” not found")) } else { self.changed() }
+                return
+            }
+            self.searchInterval = ChargeControl.firstSearchInterval
+            guard host != self.plug?.host else { return self.changed() }
+            UserDefaults.standard.set(host, forKey: self.foundHostKey)
+            UserDefaults.standard.set(name, forKey: self.foundNameKey)
+            self.plug = KasaPlug(host: host)
+            self.changed()
+            self.check()
+        }
     }
 
     private func finishCompletions() {

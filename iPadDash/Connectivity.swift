@@ -18,6 +18,8 @@ enum ServiceError: LocalizedError {
     case http(Int, String?)
     case api(String)
     case badResponse
+    /// No answer at all (the connection dropped): a network problem, not the service's.
+    case noResponse(String)
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +27,7 @@ enum ServiceError: LocalizedError {
         case .http(let code, let message): return message.map { "HTTP \(code): \($0)" } ?? "HTTP \(code)"
         case .api(let message): return message
         case .badResponse: return "unexpected response"
+        case .noResponse(let message): return message
         }
     }
 }
@@ -51,7 +54,7 @@ func fetchJSON(_ request: URLRequest, errorKey: String? = nil, retry: Bool = tru
             if let error = error, isDroppedConnection(error) {
                 if retry { return fetchJSON(request, errorKey: errorKey, retry: false, completion: completion) }
                 Connectivity.shared.requestFinished(gotResponse: false)
-                return completion(.failure(ServiceError.api("connection dropped")))
+                return completion(.failure(ServiceError.noResponse("connection dropped")))
             }
             Connectivity.shared.requestFinished(gotResponse: response != nil)
             if let error = error {
@@ -81,6 +84,17 @@ func url(_ base: URL, query: [String: String]) -> URL {
     components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
     components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
     return components.url!
+}
+
+extension Result where Failure == Error {
+    /// A page's bookkeeping after a fetch: a success replaces the value and clears
+    /// the error; a failure keeps the last good value and notes the error.
+    func store(in value: inout Success?, error: inout Error?) {
+        switch self {
+        case .success(let new): value = new; error = nil
+        case .failure(let failure): error = failure
+        }
+    }
 }
 
 /// Requests run in parallel: `collect` wraps each completion, `notify` runs on the

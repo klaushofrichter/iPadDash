@@ -4,7 +4,8 @@ import UIKit
 /// in red, at most five, in the style of the GitHub page; below it a large clock,
 /// the date, and the temperature for the next eight hours where the iPad is.
 final class SummaryPageViewController: DashboardPageViewController {
-    override var fixedFetchInterval: TimeInterval? { return 30 * 60 }   // weather
+    private let weatherInterval: TimeInterval = 30 * 60
+    override var fixedFetchInterval: TimeInterval? { return weatherInterval }
     override var redrawInterval: TimeInterval? { return 30 }            // ages and durations
     private let maxRows = 5
 
@@ -27,9 +28,9 @@ final class SummaryPageViewController: DashboardPageViewController {
     private let alertRows = UIStackView()
     /// "Red on the dashboard" over the red items; it and the rows are hidden when there are none.
     private lazy var alertHeading = sectionHeading("Red on the dashboard")
-    /// The clock and weather start below the red items, or at the top of the content when there are none.
+    /// The clock and weather start below the red items while there are any; otherwise
+    /// a weaker constraint puts them at the top of the content.
     private lazy var lowerBelowRows = lowerArea.topAnchor.constraint(equalTo: alertRows.bottomAnchor, constant: 24)
-    private var lowerBelowNames: NSLayoutConstraint?
     /// When the forecast was last fetched successfully.
     private var weatherUpdated: Date?
     private let timeLabel = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 150 * scale, weight: .light))
@@ -45,11 +46,10 @@ final class SummaryPageViewController: DashboardPageViewController {
     /// Not private: the tests check that `lower` fits in `lowerArea`.
     let lower = UIStackView()
     let lowerArea = UIView()
-    /// Top to bottom = most to least important; fitLowerSections() drops from the bottom.
-    private lazy var lowerSections: [UIView] = [timeLabel, dateLabel, weather, graph]
-    /// The space after each section but the last.
-    private let lowerGaps: [CGFloat] = [12, 48, 20]
-    private var fitting = false
+    /// Top to bottom = most to least important, each with the space above it;
+    /// fitLowerSections() drops from the bottom.
+    private lazy var lowerSections: [(view: UIView, gapBefore: CGFloat)] =
+        [(timeLabel, 0), (dateLabel, 12), (weather, 48), (graph, 20)]
     private let timeFormatter = makeDateFormatter("h:mm")
     private let dateFormatter = makeDateFormatter("EEEE, MMMM d")
     private let hourFormatter = makeDateFormatter("h a")
@@ -88,7 +88,8 @@ final class SummaryPageViewController: DashboardPageViewController {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
-        lowerBelowNames = lowerArea.topAnchor.constraint(equalTo: content.topAnchor)
+        let lowerAtTop = lowerArea.topAnchor.constraint(equalTo: content.topAnchor)
+        lowerAtTop.priority = .defaultHigh
         NSLayoutConstraint.activate([
             alertHeading.topAnchor.constraint(equalTo: content.topAnchor),
             alertHeading.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -96,7 +97,7 @@ final class SummaryPageViewController: DashboardPageViewController {
             alertRows.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             alertRows.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
-            lowerBelowRows,
+            lowerBelowRows, lowerAtTop,
             lowerArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             lowerArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             lowerArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
@@ -168,10 +169,7 @@ final class SummaryPageViewController: DashboardPageViewController {
         }
         alertHeading.isHidden = items.isEmpty
         alertRows.isHidden = items.isEmpty
-        // Deactivate first, so the two are never on together.
-        let (on, off) = items.isEmpty ? (lowerBelowNames, lowerBelowRows) : (lowerBelowRows, lowerBelowNames)
-        off?.isActive = false
-        on?.isActive = true
+        lowerBelowRows.isActive = !items.isEmpty
         let rows = alertRows.arrangedSubviews.compactMap { $0 as? KeyValueRow }
         rowTargets = rows.indices.map { $0 < items.count ? items[$0].page : nil }
         for (row, target) in zip(rows, rowTargets) { row.gestureRecognizers?.forEach { $0.isEnabled = target != nil } }
@@ -215,7 +213,7 @@ final class SummaryPageViewController: DashboardPageViewController {
             return fetching ? "Loading weather data…" : "No weather data"
         }
         let minutes = Int(now.timeIntervalSince(updated) / 60)
-        let currentFor = Int((fixedFetchInterval ?? 30 * 60) / 60) + 1
+        let currentFor = Int(weatherInterval / 60) + 1
         if minutes < currentFor { return "Weather data is current" }
         if minutes < 120 { return "Weather data updated \(minutes) minutes ago" }
         if minutes < 4 * 60 { return "Weather data updated less than \(minutes / 60 + 1) hours ago" }
@@ -233,27 +231,23 @@ final class SummaryPageViewController: DashboardPageViewController {
     /// zero high, which let a graph that doesn't fit come back on every other pass.
     private func fitLowerSections() {
         let width = lowerArea.bounds.width, available = lowerArea.bounds.height
-        guard !fitting, width > 0 else { return }
-        fitting = true
-        defer { fitting = false }
-        let wanted = [true, true, true, graph.temperatures.count >= 2]
-        var count = 0
+        guard width > 0 else { return }
+        var shown: [(view: UIView, gapBefore: CGFloat)] = []
         var used: CGFloat = 0
-        for (index, section) in lowerSections.enumerated() where count == index && wanted[index] {
-            let height = section.systemLayoutSizeFitting(
+        for section in lowerSections {
+            if section.view === graph && graph.temperatures.count < 2 { break }   // nothing to draw
+            let height = section.view.systemLayoutSizeFitting(
                 CGSize(width: width, height: 0),
                 withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
-            let gap = index == 0 ? 0 : lowerGaps[index - 1]
-            guard used + gap + height <= available else { break }
-            used += gap + height
-            count += 1
+            guard used + section.gapBefore + height <= available else { break }
+            used += section.gapBefore + height
+            shown.append(section)
         }
-        let shown = Array(lowerSections.prefix(count))
-        guard lower.arrangedSubviews != shown else { return }
+        guard lower.arrangedSubviews != shown.map({ $0.view }) else { return }
         lower.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (index, section) in shown.enumerated() {
-            lower.addArrangedSubview(section)
-            if index < lowerGaps.count { lower.setCustomSpacing(lowerGaps[index], after: section) }
+            lower.addArrangedSubview(section.view)
+            if index > 0 { lower.setCustomSpacing(section.gapBefore, after: shown[index - 1].view) }
         }
     }
 

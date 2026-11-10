@@ -58,9 +58,8 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         clockControl.addTarget(self, action: #selector(clockChanged), for: .valueChanged)
 
         plugField.text = Settings.chargePlug
-        plugField.placeholder = "IP address of the Kasa plug, e.g. 192.168.1.23 (empty: off)"
+        plugField.placeholder = "Name of the Kasa plug, e.g. Garland, or its IP address (empty: off)"
         plugField.font = font(17)
-        plugField.keyboardType = .numbersAndPunctuation
         plugField.autocorrectionType = .no
         plugField.autocapitalizationType = .none
         plugField.returnKeyType = .done
@@ -98,7 +97,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
                     note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
             section("Summary page", control: summaryControl, extra: summaryNote),
             section("Charging plug", control: plugField,
-                    note: "Switches this iPad's charger: on at 40 %, off at 70 %. While off, the plug turns itself back on within 2 h unless the app keeps checking.",
+                    note: "The plug's name in the Kasa app; the iPad finds it on the network, also after its address changes. Switches this iPad's charger: on at 40 %, off at 70 %. While off, the plug turns itself back on within 2 h unless the app keeps checking.",
                     extra: chargeExtra),
             section("Theme", control: themeControl),
             section("Date and time", control: clockControl,
@@ -219,6 +218,8 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         var parts: [String] = []
         if let battery = charge.batteryText { parts.append(battery) }
         parts.append(charge.isOn ? "plug " + charge.plugStatusText(showingError: true) : "off: the charger stays on")
+        // For a plug set by name, where it was found.
+        if let address = charge.plugAddress, address != Settings.chargePlug { parts.append("at \(address)") }
         parts += charge.alerts.map { "\($0.what) \($0.detail)" }
         chargeStatus.set(parts.joined(separator: " · "))
         chargeStatus.alert = !charge.alerts.isEmpty

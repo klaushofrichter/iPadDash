@@ -44,6 +44,12 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(freshnessText(since: now.addingTimeInterval(-6 * 3600), now: now), "DATA IS OUTDATED")
     }
 
+    func testCounted() {
+        XCTAssertEqual(counted(0, "PR"), "0 PRs")
+        XCTAssertEqual(counted(1, "PR"), "1 PR")
+        XCTAssertEqual(counted(2, "open pull request"), "2 open pull requests")
+    }
+
     func testNumbers() {
         XCTAssertEqual(groupedNumber(1314), "1,314")
         XCTAssertEqual(groupedNumber(7), "7")
@@ -140,6 +146,55 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(KasaPlug.unscramble(KasaPlug.scramble(Data())), Data())
     }
 
+    func testPlugSettingIsNameOrAddress() {
+        XCTAssertTrue(KasaSearch.isAddress("192.168.1.34"))
+        XCTAssertFalse(KasaSearch.isAddress("Garland"))
+        XCTAssertFalse(KasaSearch.isAddress("Window lights"))
+        XCTAssertFalse(KasaSearch.isAddress("192.168.1"))
+        XCTAssertFalse(KasaSearch.isAddress("192.168.1.300"))
+        XCTAssertFalse(KasaSearch.isAddress("192.168..34"))
+        XCTAssertFalse(KasaSearch.isAddress(""))
+    }
+
+    func testPlugSearchCoversTheNetworkButNotItself() {
+        let hosts = KasaSearch.neighbors(of: "192.168.1.107")
+        XCTAssertEqual(hosts.count, 253)
+        XCTAssertEqual(hosts.first, "192.168.1.1")
+        XCTAssertEqual(hosts.last, "192.168.1.254")
+        XCTAssertFalse(hosts.contains("192.168.1.107"))
+        XCTAssertTrue(hosts.contains("192.168.1.34"))
+        XCTAssertEqual(KasaSearch.neighbors(of: "not an address"), [])
+    }
+
+    func testPlugNamesMatchWithoutCaseOrSpaces() {
+        XCTAssertTrue(KasaSearch.matches("Garland", "garland "))
+        XCTAssertTrue(KasaSearch.matches("Window lights", "window Lights"))
+        XCTAssertFalse(KasaSearch.matches("Garland", "Garland 2"))
+    }
+
+    func testKasaCommandsAndAnswer() {
+        XCTAssertEqual(KasaPlug.relay(true) as NSDictionary, ["system": ["set_relay_state": ["state": 1]]] as NSDictionary)
+        XCTAssertEqual(KasaPlug.relay(false) as NSDictionary, ["system": ["set_relay_state": ["state": 0]]] as NSDictionary)
+        let answer: [String: Any] = ["system": ["get_sysinfo": ["alias": "Garland", "relay_state": 1]]]
+        XCTAssertEqual(KasaPlug.sysinfo(in: answer)?["alias"] as? String, "Garland")
+        XCTAssertNil(KasaPlug.sysinfo(in: ["system": ["err_code": -1]]))
+        XCTAssertNil(KasaPlug.sysinfo(in: [:]))
+    }
+
+    func testResultStoreKeepsTheLastGoodValue() {
+        var value: Int?
+        var error: Error?
+        Result<Int, Error>.success(3).store(in: &value, error: &error)
+        XCTAssertEqual(value, 3)
+        XCTAssertNil(error)
+        Result<Int, Error>.failure(ServiceError.badResponse).store(in: &value, error: &error)
+        XCTAssertEqual(value, 3, "a failed fetch keeps the old data")
+        XCTAssertNotNil(error)
+        Result<Int, Error>.success(4).store(in: &value, error: &error)
+        XCTAssertEqual(value, 4)
+        XCTAssertNil(error, "a success clears the error")
+    }
+
     func testQueryEncodesPlus() {
         let built = url(URL(string: "https://example.com/api")!, query: ["tz": "+01:00", "a": "x y"])
         XCTAssertEqual(built.absoluteString, "https://example.com/api?a=x%20y&tz=%2B01:00")
@@ -148,6 +203,8 @@ final class ModelTests: XCTestCase {
     func testOfflineErrorsAreMarked() {
         XCTAssertTrue(PageAlert("GitHub", error: URLError(.notConnectedToInternet)).offline)
         XCTAssertTrue(PageAlert("GitHub", error: URLError(.timedOut)).offline)
+        XCTAssertTrue(PageAlert("GitHub", error: ServiceError.noResponse("connection dropped")).offline)
+        XCTAssertEqual(PageAlert("GitHub", error: ServiceError.noResponse("connection dropped")).detail, "connection dropped")
         XCTAssertFalse(PageAlert("GitHub", error: ServiceError.http(500, nil)).offline)
         XCTAssertEqual(PageAlert("GitHub", error: ServiceError.http(500, "boom")).detail, "HTTP 500: boom")
     }

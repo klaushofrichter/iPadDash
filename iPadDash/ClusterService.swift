@@ -74,13 +74,13 @@ final class ClusterService {
         return "Basic " + Data("\(user):\(token)".utf8).base64EncodedString()
     }()
 
-    /// Runs all queries in parallel; completes on the main queue with whatever
-    /// succeeded, or with the first error if nothing did.
     /// The 24 h graphs and when they were fetched. Their points are 10 minutes
     /// apart, so they are fetched again only after that.
     private var history: (fetched: Date, cpu: [(Date, Double)], mem: [(Date, Double)])?
     private let historyStep: TimeInterval = 600
 
+    /// Runs all queries in parallel; completes on the main queue with whatever
+    /// succeeded, or with the first error if nothing did.
     func fetchSnapshot(completion: @escaping (Result<ClusterSnapshot, Error>) -> Void) {
         guard auth != nil else {
             completion(.failure(ServiceError.missing("Grafana credentials")))

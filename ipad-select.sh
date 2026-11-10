@@ -15,8 +15,13 @@ ipad_link() {
     idevice_id -l | grep -qx "$1" || printf '%s' -n
 }
 
+# One value the device reports about itself: ipad_info UDID DeviceColor
+ipad_info() {
+    ideviceinfo $(ipad_link "$1") -u "$1" -k "$2" 2>/dev/null
+}
+
 ipad_color() {
-    case $(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceColor 2>/dev/null) in
+    case $(ipad_info "$1" DeviceColor) in
         '#e1e4e3') echo silver ;;
         '#3b3b3c') echo black ;;
         *) echo unknown ;;
@@ -26,8 +31,7 @@ ipad_color() {
 # Other devices (an iPhone on Wi-Fi) are left out. A device that doesn't answer is
 # asked once more, then left out with a warning.
 is_ipad() {
-    class=$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null) ||
-        class=$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null) ||
+    class=$(ipad_info "$1" DeviceClass) || class=$(ipad_info "$1" DeviceClass) ||
         { echo "warning: $1 doesn't answer; left out" >&2; return 1; }
     [ "$class" = iPad ]
 }

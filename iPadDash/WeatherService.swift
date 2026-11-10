@@ -23,7 +23,9 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
     private(set) var place: String?
     /// How long to wait for an answer to the location permission prompt.
     private let promptTimeout: TimeInterval = 20
-    private static let latKey = "weatherLatitude", lonKey = "weatherLongitude"
+    private static let latKey = "weatherLatitude", lonKey = "weatherLongitude", fixKey = "weatherLocationTime"
+    /// A wall dashboard doesn't move: a fix this recent is used without asking for a new one.
+    private let fixGoodFor: TimeInterval = 24 * 3600
 
     override init() {
         super.init()
@@ -70,6 +72,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
         set {
             UserDefaults.standard.set(newValue?.coordinate.latitude, forKey: WeatherService.latKey)
             UserDefaults.standard.set(newValue?.coordinate.longitude, forKey: WeatherService.lonKey)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: WeatherService.fixKey)
         }
     }
 
@@ -80,7 +83,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    /// A fresh fix if one comes, otherwise the last one known.
+    /// The last fix while it is recent; else a fresh one if it comes, otherwise the last one known.
     private func locate(_ completion: @escaping (CLLocation?) -> Void) {
         switch CLLocationManager.authorizationStatus() {
         case .notDetermined:
@@ -91,6 +94,8 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
                 if CLLocationManager.authorizationStatus() == .notDetermined { self.finish(self.savedLocation) }
             }
         case .authorizedWhenInUse, .authorizedAlways:
+            let fixAge = Date().timeIntervalSince1970 - UserDefaults.standard.double(forKey: WeatherService.fixKey)
+            if let saved = savedLocation, fixAge < fixGoodFor { return completion(saved) }
             waiting.append(completion)
             if waiting.count == 1 { manager.requestLocation() }
         default:
