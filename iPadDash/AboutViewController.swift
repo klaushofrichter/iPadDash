@@ -93,7 +93,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         let stack = UIStackView(arrangedSubviews: [
             title, appLine,
             section("Background update interval", control: intervalControl,
-                    note: "How often each page fetches new data on its own. A tap or swipe up on a page reloads immediately."),
+                    note: "How often each page fetches new data on its own. A tap or swipe up on a page reloads immediately; on the summary page, every page."),
             section("Auto-move", control: autoMoveControl,
                     note: "Fades to the next page on its own. A page you swipe to stays twice as long, once."),
             section("Summary page", control: summaryControl, extra: summaryNote),
@@ -113,7 +113,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
             section("Gestures", lines: ["Tap: freeze the page for 15 min and reload (red countdown, reloads every minute); again to restart the 15 min",
                                         "Long press: light / dark",
                                         "Swipe left / right: switch page; also ends a freeze",
-                                        "Swipe up on a page: reload it",
+                                        "Swipe up on a page: reload it (on Summary: all pages)",
                                         "Swipe down: this page  ·  swipe up: close"]),
         ])
         stack.axis = .vertical

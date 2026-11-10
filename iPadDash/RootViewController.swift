@@ -40,8 +40,12 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private var frozenUntil: Date?
     private var frozenReloadTimer: Timer?
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
-    /// "refreshing", left of the countdown, shown briefly after a tap.
-    private let refreshNote = SpacedLabel(font: font(14), alpha: 0.7)
+    /// "Refreshing…" with a spinner while a tap or swipe up reloads, then "Updated".
+    private let toast = UIView()
+    private let toastLabel = UILabel()
+    private let toastSpinner = UIActivityIndicatorView(style: .white)
+    /// Counts reloads, so only the latest one ends the toast.
+    private var reloadCount = 0
     /// On the summary page, where no countdown runs, the battery takes its place.
     private let battery = BatteryIconView()
     private let banner = UILabel()
@@ -72,17 +76,24 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         banner.font = font(20, .bold)
         banner.clipsToBounds = true
 
-        refreshNote.set("refreshing")
-        refreshNote.alpha = 0
-        for v in [pager.view!, clock, dots, countdown, battery, banner, refreshNote] {
+        toastLabel.font = font(22, .semibold)
+        let toastContent = UIStackView(arrangedSubviews: [toastSpinner, toastLabel])
+        toastContent.spacing = 12
+        toastContent.alignment = .center
+        toastContent.translatesAutoresizingMaskIntoConstraints = false
+        toast.addSubview(toastContent)
+        toast.layer.cornerRadius = 26
+        toast.alpha = 0
+        toast.isUserInteractionEnabled = false
+        for v in [pager.view!, clock, dots, countdown, battery, banner, toast] {
             v.translatesAutoresizingMaskIntoConstraints = false
         }
-        view.addSubview(refreshNote)
         view.addSubview(clock)
         view.addSubview(dots)
         view.addSubview(countdown)
         view.addSubview(battery)
         view.addSubview(banner)
+        view.addSubview(toast)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             pager.view.topAnchor.constraint(equalTo: view.topAnchor),
@@ -101,8 +112,13 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
             battery.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
             battery.widthAnchor.constraint(equalToConstant: 34),
             battery.heightAnchor.constraint(equalToConstant: 16),
-            refreshNote.trailingAnchor.constraint(equalTo: countdown.leadingAnchor, constant: -10),
-            refreshNote.centerYAnchor.constraint(equalTo: dots.centerYAnchor),
+            toast.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            // Above the pages' rule and title bar.
+            toast.bottomAnchor.constraint(equalTo: pager.view.bottomAnchor, constant: -76),
+            toast.heightAnchor.constraint(equalToConstant: 52),
+            toastContent.centerYAnchor.constraint(equalTo: toast.centerYAnchor),
+            toastContent.leadingAnchor.constraint(equalTo: toast.leadingAnchor, constant: 24),
+            toastContent.trailingAnchor.constraint(equalTo: toast.trailingAnchor, constant: -24),
             banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             banner.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
@@ -213,7 +229,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
                 self?.restartAutoMove()   // back to the normal cycle, starting full
             }
             frozenReloadTimer = Timer.scheduledTimer(withTimeInterval: frozenReloadInterval, repeats: true) { [weak self] _ in
-                self?.reloadCurrentPage()
+                self?.currentPage?.reloadNow()
             }
             return
         }
@@ -329,12 +345,6 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         frozenUntil = Date().addingTimeInterval(freezeDuration)
         restartAutoMove()
         reloadCurrentPage()
-        // Acknowledge the tap: "refreshing" fades out within a second.
-        refreshNote.layer.removeAllAnimations()
-        refreshNote.alpha = 1
-        UIView.animate(withDuration: 0.8, delay: 0.2, options: [.curveEaseIn], animations: {
-            self.refreshNote.alpha = 0
-        })
     }
 
     /// Fades to `page` as if swiped to: unfrozen, with the doubled countdown.
@@ -345,8 +355,38 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         restartAutoMove(swiped: true)
     }
 
+    /// Reloads the page (on the summary page, every page it lists) with the toast
+    /// showing until all the data is in.
     @objc private func reloadCurrentPage() {
-        currentPage?.reloadNow()
+        guard let page = currentPage else { return }
+        reloadCount += 1
+        let count = reloadCount
+        // The summary page shows the other pages' red items, so they reload too.
+        let reloading = page === summary ? [summary] + summary.sources : [page]
+        showToast(page === summary ? "Refreshing all pages…" : "Refreshing…", busy: true)
+        let group = DispatchGroup()
+        for page in reloading {
+            group.enter()
+            page.reloadNow { group.leave() }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self, count == self.reloadCount else { return }
+            self.showToast("Updated", busy: false)
+            UIView.animate(withDuration: 0.6, delay: 1.2, options: [.beginFromCurrentState], animations: {
+                self.toast.alpha = 0
+            })
+        }
+    }
+
+    private func showToast(_ text: String, busy: Bool) {
+        toast.layer.removeAllAnimations()
+        toast.backgroundColor = ink.withAlphaComponent(0.9)
+        toastLabel.textColor = paper
+        toastSpinner.color = paper
+        toastLabel.text = text
+        toastSpinner.isHidden = !busy
+        if busy { toastSpinner.startAnimating() } else { toastSpinner.stopAnimating() }
+        UIView.animate(withDuration: 0.2) { self.toast.alpha = 1 }
     }
 
     @objc private func longPressed(_ recognizer: UILongPressGestureRecognizer) {

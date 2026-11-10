@@ -23,8 +23,13 @@ ipad_color() {
     esac
 }
 
+# Other devices (an iPhone on Wi-Fi) are left out.
+is_ipad() {
+    [ "$(ideviceinfo $(ipad_link "$1") -u "$1" -k DeviceClass 2>/dev/null)" = iPad ]
+}
+
 select_ipads() {
-    connected=$( (idevice_id -l; idevice_id -n) | sort -u)
+    connected=$( (idevice_id -l; idevice_id -n) | sort -u | while read -r u; do if is_ipad "$u"; then echo "$u"; fi; done)
     [ -n "$connected" ] || { echo "error: no iPad connected over USB or Wi-Fi" >&2; return 1; }
     if [ -z "${1:-}" ] && [ "$(echo "$connected" | wc -l)" -gt 1 ]; then
         echo "error: several iPads connected; name one (silver, black or all):" >&2

@@ -126,6 +126,12 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         render()
     }
 
+    /// A reload asks the charging plug too, instead of waiting for its own check.
+    override func reloadNow(completion: (() -> Void)? = nil) {
+        ChargeControl.shared.check()
+        super.reloadNow(completion: completion)
+    }
+
     override func load(completion: @escaping () -> Void) {
         readInterface()
         completion()

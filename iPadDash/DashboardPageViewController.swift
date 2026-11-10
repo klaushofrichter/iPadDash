@@ -100,9 +100,10 @@ class DashboardPageViewController: UIViewController {
     }
 
     /// Fetch fresh data for everything on the page now (tap and swipe up);
-    /// the next automatic update is a full interval from now.
-    func reloadNow() {
-        fetch()
+    /// the next automatic update is a full interval from now. `completion` runs once
+    /// the page has its new data (or the fetch already under way finished).
+    func reloadNow(completion: (() -> Void)? = nil) {
+        fetch(completion: completion)
         startFetchTimer()
     }
 
@@ -119,7 +120,11 @@ class DashboardPageViewController: UIViewController {
         }
     }
 
-    private func fetch() {
+    /// Waiting for the fetch under way.
+    private var fetchCompletions: [() -> Void] = []
+
+    private func fetch(completion: (() -> Void)? = nil) {
+        if let completion = completion { fetchCompletions.append(completion) }
         guard !fetching else { return }
         fetching = true
         // A full render only the first time ("loading…"); after that just the status line.
@@ -132,6 +137,9 @@ class DashboardPageViewController: UIViewController {
             self.fetching = false
             self.lastFetch = Date()
             self.render()
+            let completions = self.fetchCompletions
+            self.fetchCompletions = []
+            completions.forEach { $0() }
         }
     }
 
