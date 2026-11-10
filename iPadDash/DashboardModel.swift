@@ -117,6 +117,14 @@ struct ClaudeSummary {
     }
 }
 
+extension ClaudeSummary {
+    /// One red item per window that is ahead of pace: "Claude Session Usage",
+    /// "Claude Weekly Usage", or both.
+    var usageAlerts: [PageAlert] {
+        return [session, weekly].filter { $0.overuse }.map { PageAlert("Claude \($0.name) Usage", "ahead of pace") }
+    }
+}
+
 /// A reading older than this turns its freshness line red.
 let staleAfter: TimeInterval = 130 * 60
 

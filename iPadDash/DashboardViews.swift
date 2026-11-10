@@ -414,8 +414,6 @@ final class StepsPanelView: PanelView {
 final class ClaudePanelView: PanelView {
     private let weeklyView = UsageMetricView()
     private let sessionView = UsageMetricView()
-    /// A window is in Overuse; only its parts are red, but the page counts it as an alert.
-    private(set) var overuse = false
 
     init() {
         super.init(title: "CLAUDE")
@@ -430,7 +428,6 @@ final class ClaudePanelView: PanelView {
 
     func configure(with summary: ClaudeSummary) {
         alerting = summary.stale
-        overuse = summary.weekly.overuse || summary.session.overuse
         heroLabel.set(summary.hero)
         heroLabel.alert = summary.weekly.overuse   // the hero reports the weekly window
         weeklyView.configure(with: summary.weekly)

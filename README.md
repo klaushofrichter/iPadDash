@@ -10,7 +10,7 @@ and if nothing does, it shows the time and the weather and stays out of the way.
 
 <p>
   <img src="docs/screenshots/summary-clear.png" width="32%" alt="Summary page with nothing red: clock, date and weather">
-  <img src="docs/screenshots/summary-red.png" width="32%" alt="Summary page listing four red items">
+  <img src="docs/screenshots/summary-red.png" width="32%" alt="Summary page listing five red items">
   <img src="docs/screenshots/cluster.png" width="32%" alt="Cluster page with load, services and 24-hour graphs">
 </p>
 
@@ -61,7 +61,7 @@ should not have to look at five pages to learn that everything is fine.**
 
 <p>
   <img src="docs/screenshots/summary-clear.png" width="32%" alt="Summary: No Current Red Alert">
-  <img src="docs/screenshots/summary-red.png" width="32%" alt="Summary: four red items in the dark theme">
+  <img src="docs/screenshots/summary-red.png" width="32%" alt="Summary: five red items in the dark theme">
   <img src="docs/screenshots/summary-offline.png" width="32%" alt="Summary during a network outage, with the red banner">
 </p>
 

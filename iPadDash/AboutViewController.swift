@@ -4,7 +4,7 @@ import UIKit.UIGestureRecognizerSubclass
 /// The settings page, opened by swiping down on a dashboard page.
 /// Closed with Done, by swiping up (iOS 12 has no swipe-to-dismiss), or after a
 /// minute untouched, so the dashboard carries on (countdown next to Done).
-final class AboutViewController: UIViewController, UITextFieldDelegate {
+final class AboutViewController: UIViewController, UITextFieldDelegate, UIGestureRecognizerDelegate {
     private let intervalControl = UISegmentedControl(items: Settings.refreshIntervals.map(intervalText))
     private let themeControl = UISegmentedControl(items: ["Light", "Dark"])
     private let clockControl = UISegmentedControl(items: Settings.clockFormatters.map { $0.string(from: Date()) })
@@ -147,11 +147,20 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
         ])
         scrollView = scroll
 
-        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(close))
+        // Swipe up goes back to the page the settings were opened from. The scroll view
+        // would take the swipe for itself, so both get it; while there is more to
+        // scroll to, the swipe only scrolls.
+        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(swipedUp))
         swipeUp.direction = .up
+        swipeUp.delegate = self
         view.addGestureRecognizer(swipeUp)
         let activity = TouchDownRecognizer(target: nil, action: nil)
-        activity.onTouch = { [weak self] in self?.restartIdle() }
+        activity.onTouch = { [weak self] in
+            guard let self = self else { return }
+            self.restartIdle()
+            self.atEndOnTouch = AboutViewController.isAtEnd(offset: scroll.contentOffset.y, content: scroll.contentSize.height,
+                                                            visible: scroll.bounds.height - scroll.contentInset.bottom)
+        }
         view.addGestureRecognizer(activity)
         plugField.addTarget(self, action: #selector(restartIdle), for: .editingChanged)
         NotificationCenter.default.addObserver(self, selector: #selector(restyle),
@@ -314,6 +323,23 @@ final class AboutViewController: UIViewController, UITextFieldDelegate {
             string: plugField.placeholder ?? "", attributes: [.foregroundColor: ink.withAlphaComponent(0.4)])
         plugField.keyboardAppearance = Theme.isDark ? .dark : .light
         themeControl.selectedSegmentIndex = Theme.isDark ? 1 : 0
+    }
+
+    /// Whether the content was scrolled to its end (or fits) when the touch began.
+    private var atEndOnTouch = true
+
+    /// Nothing further down to scroll to: the content fits or is at its end.
+    static func isAtEnd(offset: CGFloat, content: CGFloat, visible: CGFloat) -> Bool {
+        return offset + visible >= content - 1
+    }
+
+    @objc private func swipedUp() {
+        if atEndOnTouch && !plugField.isFirstResponder { close() }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        return true
     }
 
     @objc private func close() {

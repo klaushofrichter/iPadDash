@@ -134,6 +134,32 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(hero(weekly: nil, hoursLeft: 84), "n/a")
     }
 
+    func testClaudeAlertsNameTheWindow() {
+        let now = time(12)
+        // Session: 2.5 of 5 h left = pace 50 %. Weekly: 84 of 168 h left = pace 50 %.
+        func alerts(session: Double?, weekly: Double?) -> [PageAlert] {
+            let reading = ClaudeReading(timestamp: now, session: session, weekly: weekly,
+                                        sessionReset: now.addingTimeInterval(2.5 * 3600),
+                                        weeklyReset: now.addingTimeInterval(84 * 3600))
+            return ClaudeSummary(reading: reading, now: now).usageAlerts
+        }
+        XCTAssertEqual(alerts(session: 40, weekly: 40), [])
+        XCTAssertEqual(alerts(session: 60, weekly: 40), [PageAlert("Claude Session Usage", "ahead of pace")])
+        XCTAssertEqual(alerts(session: 40, weekly: 60), [PageAlert("Claude Weekly Usage", "ahead of pace")])
+        XCTAssertEqual(alerts(session: 60, weekly: 60), [PageAlert("Claude Session Usage", "ahead of pace"),
+                                                         PageAlert("Claude Weekly Usage", "ahead of pace")])
+        XCTAssertEqual(alerts(session: nil, weekly: 60).map { $0.what }, ["Claude Weekly Usage"])
+    }
+
+    func testSettingsSwipeUpClosesOnlyAtTheEnd() {
+        // The content fits: any swipe up closes.
+        XCTAssertTrue(AboutViewController.isAtEnd(offset: 0, content: 800, visible: 900))
+        // Longer than the screen: first scroll to the end.
+        XCTAssertFalse(AboutViewController.isAtEnd(offset: 0, content: 1200, visible: 900))
+        XCTAssertFalse(AboutViewController.isAtEnd(offset: 150, content: 1200, visible: 900))
+        XCTAssertTrue(AboutViewController.isAtEnd(offset: 300, content: 1200, visible: 900))
+    }
+
     // MARK: Network helpers
 
     func testKasaScrambleRoundTrip() {

@@ -72,8 +72,9 @@ final class StepsClaudePageViewController: DashboardPageViewController {
         } else {
             stepsPanel.showError(stepsError?.localizedDescription ?? "loading…")
         }
-        if let reading = claudeReading {
-            claudePanel.configure(with: ClaudeSummary(reading: reading, now: now))
+        let claude = claudeReading.map { ClaudeSummary(reading: $0, now: now) }
+        if let claude = claude {
+            claudePanel.configure(with: claude)
         } else {
             claudePanel.showError(claudeError?.localizedDescription ?? "loading…")
         }
@@ -82,7 +83,7 @@ final class StepsClaudePageViewController: DashboardPageViewController {
         var alerts: [PageAlert] = []
         if stepsPanel.alerting, let r = stepsReading { alerts.append(PageAlert("Steps data", "\(durationText(now.timeIntervalSince(r.timestamp))) old")) }
         if claudePanel.alerting, let r = claudeReading { alerts.append(PageAlert("Claude data", "\(durationText(now.timeIntervalSince(r.timestamp))) old")) }
-        if claudePanel.overuse { alerts.append(PageAlert("Claude usage", "ahead of pace")) }
+        alerts += claude?.usageAlerts ?? []
         self.alerts = alerts
     }
 }
