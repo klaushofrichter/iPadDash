@@ -95,6 +95,22 @@ final class PageTests: XCTestCase {
         XCTAssertEqual(done, 3)
     }
 
+    func testFailedFetchRetriesSoonOnce() {
+        let page = FakePage()
+        page.loadViewIfNeeded()
+        page.finishLoad()
+        XCTAssertEqual(page.loads, 1)
+        page.retrySoon()
+        page.retrySoon()   // a second failure replaces the first timer
+        // Fire the pending timer without waiting two minutes.
+        RunLoop.current.run(until: Date())
+        XCTAssertEqual(page.loads, 1, "nothing before the delay")
+        page.reloadNow()   // a fetch in the meantime cancels the retry
+        page.finishLoad()
+        XCTAssertEqual(page.loads, 2)
+        XCTAssertEqual(DashboardPageViewController.retryAfterFailure, 120)
+    }
+
     func testPlugCheckWithoutPlugCompletesAtOnce() {
         guard !ChargeControl.shared.isOn else { return }   // a plug is set up on this device
         var done = false

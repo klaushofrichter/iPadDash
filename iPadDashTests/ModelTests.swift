@@ -226,6 +226,14 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(built.absoluteString, "https://example.com/api?a=x%20y&tz=%2B01:00")
     }
 
+    func testTimeoutsAndDropsAreRecognized() {
+        XCTAssertTrue(isTimeout(URLError(.timedOut)))
+        XCTAssertFalse(isTimeout(URLError(.networkConnectionLost)))
+        XCTAssertFalse(isTimeout(ServiceError.badResponse))
+        XCTAssertTrue(isDroppedConnection(URLError(.networkConnectionLost)))
+        XCTAssertFalse(isDroppedConnection(URLError(.timedOut)))
+    }
+
     func testOfflineErrorsAreMarked() {
         XCTAssertTrue(PageAlert("GitHub", error: URLError(.notConnectedToInternet)).offline)
         XCTAssertTrue(PageAlert("GitHub", error: URLError(.timedOut)).offline)

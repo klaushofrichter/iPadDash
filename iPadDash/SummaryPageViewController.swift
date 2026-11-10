@@ -127,7 +127,9 @@ final class SummaryPageViewController: DashboardPageViewController {
                 #endif
                 self.forecast = forecast; self.lastError = nil
                 self.weatherUpdated = Date()
-            case .failure(let error): self.lastError = error
+            case .failure(let error):
+                self.lastError = error
+                self.retrySoon()
             }
             completion()
         }
