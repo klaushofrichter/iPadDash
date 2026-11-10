@@ -1,5 +1,7 @@
 # iPadDash
 
+[![Latest release](https://img.shields.io/github/v/tag/klaushofrichter/iPadDash?label=release)](https://github.com/klaushofrichter/iPadDash/tags)
+
 **A calm wall dashboard for an iPad that Apple stopped updating years ago.**
 
 iPadDash turns an old iPad (an iPad Air from 2013 on iOS 12 works fine) into an
@@ -286,3 +288,7 @@ The data sources are specific to this household (a steps service, one Grafana
 Cloud stack, one UptimeRobot account, one GitHub user). Pointing a page at your
 own source, or replacing it, is the kind of change described under
 [Add your own page by asking](#add-your-own-page-by-asking).
+
+## License
+
+[MIT](LICENSE)
