@@ -1,0 +1,88 @@
+# CodeQL for the Swift code and for the workflow files themselves.
+#
+# On a pull request the job fails when there is any finding: `analyze` alone does
+# not, so the results are kept in the job (`upload: never`) and counted. On main
+# and on the weekly run the results go to the repository's code scanning page.
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays, for new queries against unchanged code
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: codeql (${{ matrix.language }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write   # upload results on main
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Swift needs a build to trace; the project is in Xcode 27's format.
+          - language: swift
+            runner: xcode-27
+            build-mode: manual
+          - language: actions
+            runner: ubuntu-latest
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        if: matrix.language == 'swift'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.2.app
+          xcodebuild -version
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Build
+        if: matrix.build-mode == 'manual'
+        run: |
+          # The app reads its credentials from a bundled Secrets.plist that deploy.sh
+          # writes; an empty one is enough to build.
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<plist version="1.0"><dict/></plist>' > iPadDash/Secrets.plist
+          xcodebuild -project iPadDash.xcodeproj -scheme iPadDash -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/codeql \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+          output: sarif-results
+          upload: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+
+      - name: Fail on findings
+        if: github.event_name == 'pull_request'
+        run: |
+          total=0
+          for f in sarif-results/*.sarif; do
+            count=$(jq '[.runs[].results[]] | length' "$f")
+            total=$((total + count))
+          done
+          echo "CodeQL findings: $total"
+          if [ "$total" -gt 0 ]; then
+            jq -r '.runs[].results[] | "\(.ruleId): \(.message.text) (\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine))"' sarif-results/*.sarif
+            echo "::error::CodeQL found $total finding(s)"
+            exit 1
+          fi
