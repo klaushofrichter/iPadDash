@@ -86,3 +86,16 @@ jobs:
             echo "::error::CodeQL found $total finding(s)"
             exit 1
           fi
+
+  # One check to require on main, passing only when every language passed.
+  codeql-summary:
+    name: codeql
+    needs: codeql
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All languages passed
+        run: |
+          echo "codeql matrix: ${{ needs.codeql.result }}"
+          [ "${{ needs.codeql.result }}" = success ]
