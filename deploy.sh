@@ -14,9 +14,10 @@
 # IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
 # left out when only one iPad is connected.
 #
-# A deploy is a release: the code must be committed and pushed, and after the
+# A deploy is a release: the code must be committed and merged to main on GitHub
+# (through a pull request with the required checks), and after the
 # install the version tag is pushed and a GitHub source release made for it (with
-# `gh`). DIRTY=1 deploys uncommitted or unpushed code for a quick try, as version
+# `gh`). DIRTY=1 deploys uncommitted or unmerged code for a quick try, as version
 # "dev", without tag or release.
 #
 # Requires: the credentials below in .env; for install also an Apple ID added in
@@ -37,8 +38,10 @@ if [ -z "$CHECK" ] && [ -z "$DIRTY" ]; then
         exit 1
     fi
     git fetch -q origin
-    if ! git branch -r --contains HEAD | grep -q .; then
-        echo "error: $(git rev-parse --short HEAD) is not pushed; push first (or DIRTY=1 for a dev build)" >&2
+    # Releases come from main only, where every commit went through a pull request
+    # with the required checks.
+    if ! git merge-base --is-ancestor HEAD origin/main; then
+        echo "error: $(git rev-parse --short HEAD) is not on main; merge its pull request first (or DIRTY=1 for a dev build)" >&2
         exit 1
     fi
     command -v gh >/dev/null || { echo "error: the GitHub CLI (gh) is needed for the release" >&2; exit 1; }

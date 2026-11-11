@@ -307,7 +307,8 @@ a key is missing. To build your own dashboard, see
    With several iPads, name one by its color or use `all`: `./deploy.sh black`.
    Settings can be passed along: `./deploy.sh black chargePlug=Garland`.
 
-   Each deploy is a release: the code has to be committed and pushed, and after
+   Each deploy is a release: the code has to be merged to `main` through a pull
+   request (see the checks below), and after
    the install the version tag (`v2026.11.10.9`, by date) is pushed and a GitHub
    source release is created with the commits since the previous one. Deploying the
    same commit again keeps its version. For a quick try of uncommitted code,
