@@ -32,6 +32,8 @@ and if nothing does, it shows the time and the weather and stays out of the way.
   template. Describe what you want to an LLM such as Claude and it builds the page,
   or point it at this repository and have it build a dashboard for your own data
   (see [How to use this](#how-to-use-this)).
+- **Knows when it is out of date.** Once a day the app compares its version with
+  the latest GitHub release and turns red when a newer one is out.
 - **Looks after the hardware.** Keeps the battery between 40 % and 70 % through a
   smart plug, goes dark at night, and is deployed over Wi-Fi so the iPad never
   needs a cable to the Mac.

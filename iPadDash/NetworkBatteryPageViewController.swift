@@ -73,6 +73,7 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
     private let wifiRow = KeyValueRow(size: 28)
     private let addressRow = KeyValueRow(size: 28)
     private let responseRow = KeyValueRow(size: 28)
+    private let versionRow = KeyValueRow(size: 28)
 
     private var ssid: String?
     private var address: String?
@@ -92,6 +93,7 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         let stack = UIStackView(arrangedSubviews: [
             sectionHeading("Battery", size: 22), indicator, plugRow, graphCaption, graph,
             sectionHeading("Network", size: 22), statusRow, connectionRow, wifiRow, addressRow, responseRow,
+            sectionHeading("App", size: 22), versionRow,
         ])
         stack.axis = .vertical
         stack.spacing = 12
@@ -114,6 +116,7 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
 
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(render), name: ChargeControl.didChange, object: nil)
+        center.addObserver(self, selector: #selector(render), name: VersionCheck.didChange, object: nil)
         center.addObserver(self, selector: #selector(connectivityChanged), name: Connectivity.didChange, object: nil)
         startFetching()
     }
@@ -172,7 +175,8 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         let charge = ChargeControl.shared
         let network = Connectivity.shared
         let networkRed = network.outage != nil
-        let alerts = [network.outageAlert].compactMap { $0 } + charge.alerts
+        let version = VersionCheck.shared
+        let alerts = [network.outageAlert, version.alert].compactMap { $0 } + charge.alerts
 
         // Headline and one-line summary.
         if alerts.isEmpty {
@@ -218,6 +222,12 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
                         network.lastResponse.map { timeOfDayFormatter.string(from: $0) } ?? "none yet")
 
         instanceLabel.set(UIDevice.current.name)
+        if let newer = version.newerRelease {
+            versionRow.set("Version \(version.installed)", "\(newer) available", alert: true)
+        } else {
+            versionRow.set("Version \(version.installed)", version.latest == nil ? "not checked yet"
+                : version.latest == version.installed ? "latest release" : "not a release")
+        }
         self.alerts = alerts
     }
 
