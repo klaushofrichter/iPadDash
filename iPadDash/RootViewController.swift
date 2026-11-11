@@ -41,7 +41,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private var frozenReloadTimer: Timer?
     private let clock = SpacedLabel(font: UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular))
     /// "Refreshing…" with a spinner while a tap or swipe up reloads, then "Updated".
-    private let toast = UIView()
+    let toast = UIView()   // internal for tests
     private let toastLabel = UILabel()
     private let toastSpinner = UIActivityIndicatorView(style: .white)
     private lazy var toastCenterY = toast.centerYAnchor.constraint(equalTo: pager.view.bottomAnchor, constant: -38)
@@ -421,7 +421,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         })
     }
 
-    private func showToast(_ text: String, busy: Bool) {
+    func showToast(_ text: String, busy: Bool) {
         toast.layer.removeAllAnimations()
         // Opaque, and in front of everything: a page's own outlines must not show through.
         toast.backgroundColor = ink
