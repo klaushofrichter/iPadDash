@@ -41,24 +41,26 @@ struct GitHubSnapshot {
         return openPRs.filter { now.timeIntervalSince($0.created) > GitHubSnapshot.overdueAge }
     }
 
-    /// "6 open PRs · older than 15 minutes", and "Open PR in art · for 2 days" or
-    /// "3 open PRs · older than 1 day, oldest 4 days".
+    /// What turns the page red, the more urgent first, worded as on the page's
+    /// headline: "2 PRs older than 24 hours · oldest 3 days" (one: "1 PR older than
+    /// 24 hours · art, 2 days"), then "8 PRs older than 15 minutes".
     func alerts(now: Date) -> [PageAlert] {
         var alerts: [PageAlert] = []
-        if openCount >= GitHubSnapshot.manyOpen {
-            alerts.append(PageAlert(counted(openCount, "open PR"), "older than \(durationText(openPRMinAge))"))
-        }
         let overdue = self.overdue(now: now)
         if let oldest = overdue.first {
             let age = durationText(now.timeIntervalSince(oldest.created))
-            if overdue.count == 1 {
-                alerts.append(PageAlert("Open PR in \(oldest.repo)", "for \(age)"))
-            } else {
-                alerts.append(PageAlert(counted(overdue.count, "open PR"),
-                                        "older than \(durationText(GitHubSnapshot.overdueAge)), oldest \(age)"))
-            }
+            alerts.append(PageAlert("\(counted(overdue.count, "PR")) older than 24 hours",
+                                    overdue.count == 1 ? "\(oldest.repo), \(age)" : "oldest \(age)"))
+        }
+        if openCount >= GitHubSnapshot.manyOpen {
+            alerts.append(PageAlert("\(counted(openCount, "PR")) older than \(durationText(openPRMinAge))"))
         }
         return alerts
+    }
+
+    /// The page's headline: the most urgent alert, else the open count.
+    func headline(now: Date) -> String {
+        return alerts(now: now).first?.what ?? counted(openCount, "open pull request")
     }
 }
 

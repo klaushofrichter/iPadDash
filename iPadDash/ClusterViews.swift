@@ -61,6 +61,8 @@ final class KeyValueRow: UIView {
     func set(_ key: String, _ value: String, alert: Bool = false) {
         keyLabel.set(key)
         valueLabel.set(value)
+        // An empty value label has no height, and would take the whole row down with it.
+        valueLabel.isHidden = value.isEmpty
         keyLabel.alert = alert
         valueLabel.alert = alert
     }

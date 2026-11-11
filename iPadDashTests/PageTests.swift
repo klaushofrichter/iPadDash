@@ -231,4 +231,21 @@ final class PageTests: XCTestCase {
         }
         XCTAssertLessThan(sectionCounts(summary(redItems: 9))[0], 4, "nine red items leave no room for the graph")
     }
+
+    /// A red item without detail ("8 PRs older than 15 minutes") is a full row too.
+    func testSummaryShowsRowsWithoutDetail() {
+        let source = FakePage()
+        let page = SummaryPageViewController()
+        page.sources = [source]
+        page.loadViewIfNeeded()
+        source.alerts = [PageAlert("One", "red"), PageAlert("Two"), PageAlert("Three", "red")]
+        _ = sectionCounts(page, passes: 1)
+        let rows = descendants(of: page.view).compactMap { $0 as? KeyValueRow }.filter { !$0.isHidden }
+        XCTAssertEqual(rows.count, 3)
+        for row in rows { XCTAssertGreaterThan(row.frame.height, 20, "row \(row.keyLabel.text ?? "") collapsed") }
+    }
+
+    private func descendants(of view: UIView) -> [UIView] {
+        return view.subviews + view.subviews.flatMap { descendants(of: $0) }
+    }
 }
