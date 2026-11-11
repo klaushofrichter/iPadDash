@@ -6,7 +6,7 @@
 [![Dependabot](https://img.shields.io/badge/dependabot-enabled-025E8C?logo=dependabot&logoColor=white)](https://github.com/klaushofrichter/iPadDash/security/dependabot)
 <!-- The release badge carries the version; the README text names none, so it never goes stale. -->
 
-**A calm wall dashboard for an iPad that Apple stopped updating years ago.**
+**A calm dashboard for an iPad that Apple stopped supporting years ago.**
 
 iPadDash turns an old iPad (an iPad Air from 2013 on iOS 12 works fine) into an
 always-on status display: one glance tells you whether anything needs attention,
