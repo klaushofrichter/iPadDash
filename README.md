@@ -119,11 +119,13 @@ The oldest open pull requests with their age (up to five, then "… plus 3 other
 PRs"), and the most recent merges with their target branch. Two things turn it red:
 five or more open pull requests, and any pull request open for more than a day,
 whose row is red too. Pull requests younger than 15 minutes are taken to be work in
-progress and left out.
+progress and left out. When the page is red, its headline names what turned it red,
+the more urgent first: "2 PRs older than 24 hours", or "8 PRs older than 15 minutes".
+The summary page lists the same alerts in the same words.
 
 <p>
   <img src="docs/screenshots/github.png" width="32%" alt="GitHub page: three open pull requests, oldest first, and recent merges">
-  <img src="docs/screenshots/github-many.png" width="32%" alt="GitHub page: eight open pull requests, two of them older than a day in red">
+  <img src="docs/screenshots/github-many.png" width="32%" alt="GitHub page: headline 2 PRs older than 24 hours, those two rows in red">
 </p>
 
 ### Network & Battery

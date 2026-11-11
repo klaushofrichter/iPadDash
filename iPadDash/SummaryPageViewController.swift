@@ -88,8 +88,10 @@ final class SummaryPageViewController: DashboardPageViewController {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
+        // Only a fallback for when nothing is red (lowerBelowRows off). Below every
+        // label's resistance to squeezing, or it squeezes a red row to nothing.
         let lowerAtTop = lowerArea.topAnchor.constraint(equalTo: content.topAnchor)
-        lowerAtTop.priority = .defaultHigh
+        lowerAtTop.priority = UILayoutPriority(UILayoutPriority.defaultLow.rawValue - 1)
         NSLayoutConstraint.activate([
             alertHeading.topAnchor.constraint(equalTo: content.topAnchor),
             alertHeading.leadingAnchor.constraint(equalTo: content.leadingAnchor),

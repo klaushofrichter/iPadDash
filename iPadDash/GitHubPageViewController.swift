@@ -119,8 +119,10 @@ final class GitHubPageViewController: DashboardPageViewController {
     override func render() {
         let now = Date()
         if let s = snapshot {
-            heroLabel.set(counted(s.openCount, "open pull request"))
-            summaryLabel.set("\(groupedNumber(s.merged24h)) merged in the last 24 h · \(groupedNumber(s.merged30d)) in 30 days")
+            heroLabel.set(s.headline(now: now))
+            // The open count stays in view when the headline names an alert instead.
+            let open = s.alerts(now: now).isEmpty ? "" : "\(groupedNumber(s.openCount)) open · "
+            summaryLabel.set("\(open)\(groupedNumber(s.merged24h)) merged in the last 24 h · \(groupedNumber(s.merged30d)) in 30 days")
             let recent: String
             switch s.merged24h {
             case 0: recent = "none"
