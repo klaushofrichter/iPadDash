@@ -1,0 +1,21 @@
+version: 2
+
+# Version updates only. The security half (alerts + security updates) is a repository
+# setting, not config: kube-setup docs/repository-baseline.md, requirements 1 and 2.
+# The app has no package dependencies (no Swift packages, no CocoaPods), so only the
+# workflow actions are covered.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

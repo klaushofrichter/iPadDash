@@ -1,6 +1,10 @@
 # iPadDash
 
-[![Latest release](https://img.shields.io/github/v/tag/klaushofrichter/iPadDash?label=release)](https://github.com/klaushofrichter/iPadDash/tags)
+[![Latest release](https://img.shields.io/github/v/release/klaushofrichter/iPadDash?label=release)](https://github.com/klaushofrichter/iPadDash/releases)
+[![Checks](https://github.com/klaushofrichter/iPadDash/actions/workflows/checks.yml/badge.svg)](https://github.com/klaushofrichter/iPadDash/actions/workflows/checks.yml)
+[![CodeQL](https://github.com/klaushofrichter/iPadDash/actions/workflows/codeql.yml/badge.svg)](https://github.com/klaushofrichter/iPadDash/actions/workflows/codeql.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-025E8C?logo=dependabot&logoColor=white)](https://github.com/klaushofrichter/iPadDash/security/dependabot)
+<!-- The release badge carries the version; the README text names none, so it never goes stale. -->
 
 **A calm wall dashboard for an iPad that Apple stopped updating years ago.**
 
@@ -322,6 +326,11 @@ builds without signing and checks that the binary loads on iOS 12.
 ```
 
 runs the unit tests in an iPad simulator.
+
+On GitHub, `main` is protected: pull requests need the `test` check (these unit
+tests) and the `codeql` check (Swift and the workflow files, failing on any finding)
+to pass, and `main` cannot be force-pushed or deleted. Dependabot keeps the
+workflow actions current and reports security advisories.
 
 ## License
 
