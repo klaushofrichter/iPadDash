@@ -254,4 +254,40 @@ final class ModelTests: XCTestCase {
         XCTAssertFalse(PageAlert("GitHub", error: ServiceError.http(500, nil)).offline)
         XCTAssertEqual(PageAlert("GitHub", error: ServiceError.http(500, "boom")).detail, "HTTP 500: boom")
     }
+
+    func testGitHubOpenPRAlerts() {
+        let now = Date()
+        func pr(_ repo: String, hours: Double) -> OpenPR {
+            return OpenPR(repo: repo, number: 1, title: "t", created: now.addingTimeInterval(-hours * 3600))
+        }
+        var s = GitHubSnapshot()
+        XCTAssertEqual(s.alerts(now: now), [])
+
+        // Four young PRs: no alert. Five: one.
+        s.openPRs = (0..<4).map { _ in pr("art", hours: 2) }
+        s.openCount = 4
+        XCTAssertEqual(s.alerts(now: now), [])
+        s.openPRs.append(pr("cams", hours: 3))
+        s.openCount = 5
+        XCTAssertEqual(s.alerts(now: now), [PageAlert("5 open PRs", "older than 15 minutes")])
+
+        // One PR older than a day is an alert on its own, naming its repository.
+        s.openPRs = [pr("art", hours: 49)]
+        s.openCount = 1
+        XCTAssertEqual(s.alerts(now: now), [PageAlert("Open PR in art", "for 2 days")])
+
+        // Several overdue: counted, with the oldest's age; plus the many-open alert.
+        s.openPRs = [pr("art", hours: 75), pr("cams", hours: 30)] + (0..<4).map { _ in pr("x", hours: 1) }
+        s.openCount = 6
+        XCTAssertEqual(s.alerts(now: now), [PageAlert("6 open PRs", "older than 15 minutes"),
+                                            PageAlert("2 open PRs", "older than 1 day, oldest 3 days")])
+        XCTAssertEqual(s.overdue(now: now).map { $0.repo }, ["art", "cams"])
+    }
+
+    func testGitHubDemoPRsAreOldestFirst() {
+        let s = GitHubPageViewController.demo(open: 8, into: GitHubSnapshot())
+        XCTAssertEqual(s.openCount, 8)
+        XCTAssertEqual(s.openPRs.count, 8)
+        XCTAssertEqual(s.openPRs.map { $0.created }, s.openPRs.map { $0.created }.sorted())
+    }
 }
