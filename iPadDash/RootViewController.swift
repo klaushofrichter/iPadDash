@@ -46,6 +46,9 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let toastSpinner = UIActivityIndicatorView(style: .white)
     /// Counts reloads and their ends, so only the latest reload ends the toast, once.
     private var reloadCount = 0
+    /// A tap or swipe up this soon after the last one doesn't reload again.
+    private let reloadPause: TimeInterval = 15
+    private var lastManualReload = Date.distantPast
     private let reloadTimeout: TimeInterval = 45
     /// On the summary page, where no countdown runs, the battery takes its place.
     private let battery = BatteryIconView()
@@ -161,6 +164,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         dataPages.forEach { _ = $0.view }
         summary.sources = dataPages   // after loading: the summary shows their names
         summary.openPage = { [weak self] page in self?.open(page) }
+        // A tap on a page dot goes to that page.
+        dots.onSelect = { [weak self] index in
+            guard let self = self, self.pages.indices.contains(index) else { return }
+            self.open(self.pages[index])
+        }
         updatePages()
         updateBanner()
         applyTheme(to: view)
@@ -365,6 +373,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     @objc private func reloadCurrentPage() {
         let reloading = pagesToReload
         guard !reloading.isEmpty else { return }
+        guard Date().timeIntervalSince(lastManualReload) >= reloadPause else {
+            if toast.alpha == 0 { endToast("Refreshed moments ago", after: 1) }
+            return
+        }
+        lastManualReload = Date()
         reloadCount += 1
         let count = reloadCount
         showToast(reloading.count > 1 ? "Refreshing all pages…" : "Refreshing…", busy: true)
@@ -408,12 +421,16 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
 
     private func showToast(_ text: String, busy: Bool) {
         toast.layer.removeAllAnimations()
-        toast.backgroundColor = ink.withAlphaComponent(0.9)
+        // Opaque, and in front of everything: a page's own outlines must not show through.
+        toast.backgroundColor = ink
+        view.bringSubviewToFront(toast)
         toastLabel.textColor = paper
         toastSpinner.color = paper
         toastLabel.text = text
         if busy { toastSpinner.startAnimating() } else { toastSpinner.stopAnimating() }
-        UIView.animate(withDuration: 0.2) { self.toast.alpha = 1 }
+        // At once, not faded in: a reload that ends within the fade-in would start the
+        // fade-out from nothing, and the pill would never show.
+        toast.alpha = 1
     }
 
     @objc private func longPressed(_ recognizer: UILongPressGestureRecognizer) {

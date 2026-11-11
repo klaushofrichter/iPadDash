@@ -3,7 +3,9 @@ import UIKit
 /// Page indicator with per-page alert colors (UIPageControl on iOS 12 can't
 /// color single dots). Current page: ink, or bright red if it shows red markup.
 /// Other pages: faint ink, or a muted darker red if they have red markup.
+/// A tap on a dot calls `onSelect` with its page.
 final class PageDotsView: UIView {
+    var onSelect: ((Int) -> Void)?
     var numberOfPages = 0 { didSet { invalidateIntrinsicContentSize(); setNeedsDisplay() } }
     var currentPage = 0 { didSet { if currentPage != oldValue { setNeedsDisplay() } } }
     var alerts: [Bool] = [] { didSet { if alerts != oldValue { setNeedsDisplay() } } }
@@ -15,7 +17,28 @@ final class PageDotsView: UIView {
         super.init(frame: frame)
         backgroundColor = .clear
         contentMode = .redraw
-        isUserInteractionEnabled = false
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+    }
+
+    /// The dots are small: touches this far around them count.
+    private let touchMargin = CGSize(width: 10, height: 18)
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        return bounds.insetBy(dx: -touchMargin.width, dy: -touchMargin.height).contains(point)
+    }
+
+    @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+        if let page = page(at: recognizer.location(in: self).x) { onSelect?(page) }
+    }
+
+    /// The page whose dot is nearest to `x`, within half a spacing of it.
+    func page(at x: CGFloat) -> Int? {
+        guard numberOfPages > 0 else { return nil }
+        let first = (bounds.width - intrinsicContentSize.width) / 2 + diameter / 2
+        let step = diameter + spacing
+        let page = Int(((x - first) / step).rounded())
+        guard (0..<numberOfPages).contains(page), abs(x - (first + CGFloat(page) * step)) <= step / 2 else { return nil }
+        return page
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

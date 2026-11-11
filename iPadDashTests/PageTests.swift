@@ -131,6 +131,26 @@ final class PageTests: XCTestCase {
         XCTAssertEqual(posts, 2)
     }
 
+    func testPageDotHitsTheNearestDot() {
+        let dots = PageDotsView(frame: CGRect(x: 0, y: 0, width: 200, height: 15))
+        dots.numberOfPages = 5
+        // Dots are 11 wide, 14 apart: 5 dots take 111, starting at 44.5; centers 50, 75, 100, 125, 150.
+        XCTAssertEqual(dots.page(at: 50), 0)
+        XCTAssertEqual(dots.page(at: 100), 2)
+        XCTAssertEqual(dots.page(at: 111), 2)
+        XCTAssertEqual(dots.page(at: 114), 3)
+        XCTAssertEqual(dots.page(at: 150), 4)
+        XCTAssertNil(dots.page(at: 20), "left of the first dot")
+        XCTAssertNil(dots.page(at: 180), "right of the last dot")
+        // Touches a little outside the thin view still count.
+        XCTAssertTrue(dots.point(inside: CGPoint(x: 100, y: -12), with: nil))
+        XCTAssertFalse(dots.point(inside: CGPoint(x: 100, y: -30), with: nil))
+        var selected: Int?
+        dots.onSelect = { selected = $0 }
+        dots.onSelect?(3)
+        XCTAssertEqual(selected, 3)
+    }
+
     func testShowRowsHidesTheRest() {
         let stack = UIStackView(arrangedSubviews: (0..<3).map { _ in KeyValueRow() })
         stack.showRows(["a", "b"]) { (row: KeyValueRow, item) in row.set(item, "x") }

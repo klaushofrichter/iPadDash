@@ -234,7 +234,8 @@ can make it swell. iPadDash manages its own charger:
 | Gesture | What it does |
 | --- | --- |
 | Swipe left / right | Switch page |
-| Swipe up | Reload the page (on the summary page: all pages). A small pill confirms it. |
+| Tap a page dot | Go to that page |
+| Swipe up | Reload the page (on the summary page: all pages). A small pill confirms it. Within 15 seconds of the last reload it doesn't reload again. |
 | Tap | Freeze the page for 15 minutes and reload it |
 | Long press | Switch between light and dark |
 | Swipe down | Settings |

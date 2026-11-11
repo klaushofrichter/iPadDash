@@ -112,6 +112,7 @@ final class AboutViewController: UIViewController, UITextFieldDelegate, UIGestur
             section("Gestures", lines: ["Tap: freeze the page for 15 min and reload (red countdown, reloads every minute); again to restart the 15 min",
                                         "Long press: light / dark",
                                         "Swipe left / right: switch page; also ends a freeze",
+                                        "Tap a page dot: go to that page",
                                         "Swipe up on a page: reload it (on Summary: all pages)",
                                         "Swipe down: this page  ·  swipe up: close"]),
         ])
