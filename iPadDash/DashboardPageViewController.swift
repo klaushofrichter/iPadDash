@@ -53,6 +53,9 @@ class DashboardPageViewController: UIViewController {
     var onlyWhenRed: Bool { return false }
     /// The page's name as in its title bar, without the detail after " · ".
     private(set) var pageName = ""
+    /// The rule between the page's content and its title bar; the root centers its
+    /// refresh pill on it.
+    private(set) var footerRule: UIView?
     /// Right side of the title bar: last update, or what went wrong.
     let instanceLabel = SpacedLabel(font: font(16))
     private(set) var fetching = false
@@ -284,6 +287,7 @@ class DashboardPageViewController: UIViewController {
             bar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
+        footerRule = rule
         return rule
     }
 

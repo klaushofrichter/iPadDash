@@ -44,6 +44,7 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
     private let toast = UIView()
     private let toastLabel = UILabel()
     private let toastSpinner = UIActivityIndicatorView(style: .white)
+    private lazy var toastCenterY = toast.centerYAnchor.constraint(equalTo: pager.view.bottomAnchor, constant: -38)
     /// Counts reloads and their ends, so only the latest reload ends the toast, once.
     private var reloadCount = 0
     /// A tap or swipe up this soon after the last one doesn't reload again.
@@ -117,8 +118,8 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
             battery.widthAnchor.constraint(equalToConstant: 34),
             battery.heightAnchor.constraint(equalToConstant: 16),
             toast.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            // Above the pages' rule and title bar.
-            toast.bottomAnchor.constraint(equalTo: pager.view.bottomAnchor, constant: -76),
+            // Centered on the pages' rule above the title bar; showToast fine-tunes it.
+            toastCenterY,
             toast.heightAnchor.constraint(equalToConstant: 52),
             toastContent.centerYAnchor.constraint(equalTo: toast.centerYAnchor),
             toastContent.leadingAnchor.constraint(equalTo: toast.leadingAnchor, constant: 24),
@@ -425,6 +426,11 @@ final class RootViewController: UIViewController, UIPageViewControllerDataSource
         // Opaque, and in front of everything: a page's own outlines must not show through.
         toast.backgroundColor = ink
         view.bringSubviewToFront(toast)
+        if let rule = currentPage?.footerRule, rule.window != nil {
+            view.layoutIfNeeded()
+            let ruleY = rule.convert(CGPoint(x: 0, y: rule.bounds.midY), to: view).y
+            toastCenterY.constant = ruleY - pager.view.frame.maxY
+        }
         toastLabel.textColor = paper
         toastSpinner.color = paper
         toastLabel.text = text
