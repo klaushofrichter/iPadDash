@@ -245,6 +245,41 @@ final class PageTests: XCTestCase {
         for row in rows { XCTAssertGreaterThan(row.frame.height, 20, "row \(row.keyLabel.text ?? "") collapsed") }
     }
 
+    /// The refresh pill once sat above the footer rule, partly under the Steps & Claude
+    /// page's lower panel. It belongs centered on the rule.
+    func testRefreshPillIsCenteredOnTheFooterRule() throws {
+        let root = try XCTUnwrap(UIApplication.shared.keyWindow?.rootViewController as? RootViewController)
+        root.view.layoutIfNeeded()
+        let page = try XCTUnwrap(root.children.compactMap { $0 as? UIPageViewController }.first?
+            .viewControllers?.first as? DashboardPageViewController)
+        let rule = try XCTUnwrap(page.footerRule)
+        root.showToast("Refreshing…", busy: true)
+        root.view.layoutIfNeeded()
+        let ruleY = rule.convert(CGPoint(x: 0, y: rule.bounds.midY), to: root.view).y
+        XCTAssertEqual(root.toast.frame.midY, ruleY, accuracy: 0.5)
+        XCTAssertEqual(root.toast.frame.midX, root.view.bounds.midX, accuracy: 0.5)
+        root.toast.alpha = 0
+    }
+
+    /// A long PR title shrank the whole row's text to fit. It is cut short instead,
+    /// at full size, and the age stays whole.
+    func testLongGitHubTitleIsCutShortNotShrunk() {
+        let page = GitHubPageViewController()
+        page.view.frame = CGRect(x: 0, y: 0, width: 820, height: 1180)
+        page.loadViewIfNeeded()
+        let rows = descendants(of: page.view).compactMap { $0 as? KeyValueRow }
+        XCTAssertFalse(rows.isEmpty)
+        for row in rows {
+            row.set("cams #386 · " + String(repeating: "a very long pull request title ", count: 6), "2 hours")
+            row.frame.size.width = 772
+            row.layoutIfNeeded()
+            XCTAssertFalse(row.keyLabel.adjustsFontSizeToFitWidth, "the title must not shrink")
+            XCTAssertEqual(row.keyLabel.lineBreakMode, .byTruncatingTail)
+            XCTAssertGreaterThanOrEqual(row.valueLabel.frame.width + 0.5, row.valueLabel.intrinsicContentSize.width,
+                                        "the age must not be cut")
+        }
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         return view.subviews + view.subviews.flatMap { descendants(of: $0) }
     }
