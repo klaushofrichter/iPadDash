@@ -144,10 +144,10 @@ final class ModelTests: XCTestCase {
             return ClaudeSummary(reading: reading, now: now).usageAlerts
         }
         XCTAssertEqual(alerts(session: 40, weekly: 40), [])
-        XCTAssertEqual(alerts(session: 60, weekly: 40), [PageAlert("Claude Session Usage", "ahead of pace")])
-        XCTAssertEqual(alerts(session: 40, weekly: 60), [PageAlert("Claude Weekly Usage", "ahead of pace")])
-        XCTAssertEqual(alerts(session: 60, weekly: 60), [PageAlert("Claude Session Usage", "ahead of pace"),
-                                                         PageAlert("Claude Weekly Usage", "ahead of pace")])
+        XCTAssertEqual(alerts(session: 60, weekly: 40), [PageAlert("Claude Session Usage", "60% · pace 50%")])
+        XCTAssertEqual(alerts(session: 40, weekly: 72.5), [PageAlert("Claude Weekly Usage", "72.5% · pace 50%")])
+        XCTAssertEqual(alerts(session: 60, weekly: 55), [PageAlert("Claude Session Usage", "60% · pace 50%"),
+                                                         PageAlert("Claude Weekly Usage", "55% · pace 50%")])
         XCTAssertEqual(alerts(session: nil, weekly: 60).map { $0.what }, ["Claude Weekly Usage"])
     }
 
@@ -224,6 +224,26 @@ final class ModelTests: XCTestCase {
     func testQueryEncodesPlus() {
         let built = url(URL(string: "https://example.com/api")!, query: ["tz": "+01:00", "a": "x y"])
         XCTAssertEqual(built.absoluteString, "https://example.com/api?a=x%20y&tz=%2B01:00")
+    }
+
+    func testVersionComparison() {
+        XCTAssertEqual(VersionCheck.version(fromTag: "v2026.11.10.11"), "2026.11.10.11")
+        XCTAssertEqual(VersionCheck.version(fromTag: "2026.11.10.11"), "2026.11.10.11")
+        XCTAssertTrue(VersionCheck.isNewer("2026.11.10.11", than: "2026.11.10.9"), "11 > 9, not as text")
+        XCTAssertTrue(VersionCheck.isNewer("2026.11.11.1", than: "2026.11.10.11"))
+        XCTAssertTrue(VersionCheck.isNewer("2026.12.1.1", than: "2026.11.30.4"))
+        XCTAssertFalse(VersionCheck.isNewer("2026.11.10.11", than: "2026.11.10.11"))
+        XCTAssertFalse(VersionCheck.isNewer("2026.11.10.10", than: "2026.11.10.11"))
+        XCTAssertFalse(VersionCheck.isNewer("2026.11.10.11", than: "dev"), "a dev build is never out of date")
+        XCTAssertFalse(VersionCheck.isNewer("nonsense", than: "2026.11.10.11"))
+    }
+
+    func testTimeoutsAndDropsAreRecognized() {
+        XCTAssertTrue(isTimeout(URLError(.timedOut)))
+        XCTAssertFalse(isTimeout(URLError(.networkConnectionLost)))
+        XCTAssertFalse(isTimeout(ServiceError.badResponse))
+        XCTAssertTrue(isDroppedConnection(URLError(.networkConnectionLost)))
+        XCTAssertFalse(isDroppedConnection(URLError(.timedOut)))
     }
 
     func testOfflineErrorsAreMarked() {

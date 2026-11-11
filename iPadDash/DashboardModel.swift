@@ -118,10 +118,12 @@ struct ClaudeSummary {
 }
 
 extension ClaudeSummary {
-    /// One red item per window that is ahead of pace: "Claude Session Usage",
-    /// "Claude Weekly Usage", or both.
+    /// One red item per window that is ahead of pace, with the usage and the pace
+    /// ("Claude Session Usage" · "60% · pace 50%"), like the cluster's "Cluster CPU" · "92%".
     var usageAlerts: [PageAlert] {
-        return [session, weekly].filter { $0.overuse }.map { PageAlert("Claude \($0.name) Usage", "ahead of pace") }
+        return [session, weekly].filter { $0.overuse }.map {
+            PageAlert("Claude \($0.name) Usage", "\(percentText($0.actual ?? 0))% · pace \($0.pace)%")
+        }
     }
 }
 

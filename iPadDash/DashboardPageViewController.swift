@@ -53,6 +53,9 @@ class DashboardPageViewController: UIViewController {
     var onlyWhenRed: Bool { return false }
     /// The page's name as in its title bar, without the detail after " · ".
     private(set) var pageName = ""
+    /// The rule between the page's content and its title bar; the root centers its
+    /// refresh pill on it.
+    private(set) var footerRule: UIView?
     /// Right side of the title bar: last update, or what went wrong.
     let instanceLabel = SpacedLabel(font: font(16))
     private(set) var fetching = false
@@ -124,11 +127,23 @@ class DashboardPageViewController: UIViewController {
 
     /// Waiting for the fetch under way.
     private var fetchCompletions: [() -> Void] = []
+    private var retryTimer: Timer?
+    /// How soon a page on a long schedule of its own tries again after a failed fetch.
+    static let retryAfterFailure: TimeInterval = 2 * 60
+
+    /// For a page with a long `fixedFetchInterval` (the weather, GitHub): after a
+    /// failed fetch, one more try in two minutes instead of a whole interval later.
+    func retrySoon() {
+        retryTimer?.invalidate()
+        retryTimer = Timer.scheduledTimer(withTimeInterval: DashboardPageViewController.retryAfterFailure,
+                                          repeats: false) { [weak self] _ in self?.fetch() }
+    }
 
     private func fetch(completion: (() -> Void)? = nil) {
         if let completion = completion { fetchCompletions.append(completion) }
         guard !fetching else { return }
         fetching = true
+        retryTimer?.invalidate()
         // A full render only the first time ("loading…"); after that just the status line.
         if lastFetch == nil {
             render()
@@ -272,6 +287,7 @@ class DashboardPageViewController: UIViewController {
             bar.trailingAnchor.constraint(equalTo: rule.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
         ])
+        footerRule = rule
         return rule
     }
 

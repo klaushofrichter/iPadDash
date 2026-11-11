@@ -95,6 +95,22 @@ final class PageTests: XCTestCase {
         XCTAssertEqual(done, 3)
     }
 
+    func testFailedFetchRetriesSoonOnce() {
+        let page = FakePage()
+        page.loadViewIfNeeded()
+        page.finishLoad()
+        XCTAssertEqual(page.loads, 1)
+        page.retrySoon()
+        page.retrySoon()   // a second failure replaces the first timer
+        // Fire the pending timer without waiting two minutes.
+        RunLoop.current.run(until: Date())
+        XCTAssertEqual(page.loads, 1, "nothing before the delay")
+        page.reloadNow()   // a fetch in the meantime cancels the retry
+        page.finishLoad()
+        XCTAssertEqual(page.loads, 2)
+        XCTAssertEqual(DashboardPageViewController.retryAfterFailure, 120)
+    }
+
     func testPlugCheckWithoutPlugCompletesAtOnce() {
         guard !ChargeControl.shared.isOn else { return }   // a plug is set up on this device
         var done = false
@@ -113,6 +129,26 @@ final class PageTests: XCTestCase {
         XCTAssertTrue(page.hasAlert)
         page.alerts = []
         XCTAssertEqual(posts, 2)
+    }
+
+    func testPageDotHitsTheNearestDot() {
+        let dots = PageDotsView(frame: CGRect(x: 0, y: 0, width: 200, height: 15))
+        dots.numberOfPages = 5
+        // Dots are 11 wide, 14 apart: 5 dots take 111, starting at 44.5; centers 50, 75, 100, 125, 150.
+        XCTAssertEqual(dots.page(at: 50), 0)
+        XCTAssertEqual(dots.page(at: 100), 2)
+        XCTAssertEqual(dots.page(at: 111), 2)
+        XCTAssertEqual(dots.page(at: 114), 3)
+        XCTAssertEqual(dots.page(at: 150), 4)
+        XCTAssertNil(dots.page(at: 20), "left of the first dot")
+        XCTAssertNil(dots.page(at: 180), "right of the last dot")
+        // Touches a little outside the thin view still count.
+        XCTAssertTrue(dots.point(inside: CGPoint(x: 100, y: -12), with: nil))
+        XCTAssertFalse(dots.point(inside: CGPoint(x: 100, y: -30), with: nil))
+        var selected: Int?
+        dots.onSelect = { selected = $0 }
+        dots.onSelect?(3)
+        XCTAssertEqual(selected, 3)
     }
 
     func testShowRowsHidesTheRest() {

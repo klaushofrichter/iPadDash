@@ -97,6 +97,7 @@ final class GitHubPageViewController: DashboardPageViewController {
                 self.lastSuccess = Date()
             case .failure(let error):
                 self.lastError = error
+                self.retrySoon()
             }
             completion()
         }
