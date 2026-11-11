@@ -2,9 +2,9 @@ import Foundation
 
 // Pull request activity across the repositories owned by klaushofrichter, via
 // GitHub's search API and a fine-grained token (Pull requests: read-only on all
-// repositories). Each refresh is three searches: open PRs (at least 15 minutes old), merged in the last
-// 24 h (count only), and merged in the last 30 days (count and the newest ones,
-// via GraphQL for their target branch).
+// repositories). Each refresh is three searches: open PRs (at least 15 minutes old,
+// oldest first), merged in the last 24 h (count only), and merged in the last 30
+// days (count and the newest ones, via GraphQL for their target branch).
 
 struct MergedPR {
     let repo: String
@@ -14,15 +14,52 @@ struct MergedPR {
     let base: String            // target branch, e.g. "main" or "production"
 }
 
+struct OpenPR: Equatable {
+    let repo: String
+    let number: Int
+    let title: String
+    let created: Date
+}
+
 /// Open PRs younger than this are taken to be work in progress and left out.
-private let openPRMinAge: TimeInterval = 15 * 60
+let openPRMinAge: TimeInterval = 15 * 60
 
 struct GitHubSnapshot {
+    /// All open PRs at least `openPRMinAge` old; `openPRs` holds the oldest 100 of them.
     var openCount = 0
-    var openByRepo: [(repo: String, count: Int, oldest: Date?)] = []   // most open PRs first
+    var openPRs: [OpenPR] = []                          // oldest first
     var merged24h = 0
     var merged30d = 0
     var recentMerges: [MergedPR] = []                   // newest first
+
+    /// This many open PRs or more is an alert.
+    static let manyOpen = 5
+    /// An open PR older than this is overdue, and an alert on its own.
+    static let overdueAge: TimeInterval = 24 * 3600
+
+    func overdue(now: Date) -> [OpenPR] {
+        return openPRs.filter { now.timeIntervalSince($0.created) > GitHubSnapshot.overdueAge }
+    }
+
+    /// "6 open PRs · older than 15 minutes", and "Open PR in art · for 2 days" or
+    /// "3 open PRs · older than 1 day, oldest 4 days".
+    func alerts(now: Date) -> [PageAlert] {
+        var alerts: [PageAlert] = []
+        if openCount >= GitHubSnapshot.manyOpen {
+            alerts.append(PageAlert(counted(openCount, "open PR"), "older than \(durationText(openPRMinAge))"))
+        }
+        let overdue = self.overdue(now: now)
+        if let oldest = overdue.first {
+            let age = durationText(now.timeIntervalSince(oldest.created))
+            if overdue.count == 1 {
+                alerts.append(PageAlert("Open PR in \(oldest.repo)", "for \(age)"))
+            } else {
+                alerts.append(PageAlert(counted(overdue.count, "open PR"),
+                                        "older than \(durationText(GitHubSnapshot.overdueAge)), oldest \(age)"))
+            }
+        }
+        return alerts
+    }
 }
 
 final class GitHubService {
@@ -36,24 +73,20 @@ final class GitHubService {
         var snapshot = GitHubSnapshot()
         let group = FetchGroup()
 
-        func search(_ query: String, perPage: Int, _ apply: @escaping (Int, [[String: Any]]) -> Void) {
-            self.search(query, perPage: perPage, completion: group.collect { apply($0.0, $0.1) })
+        func search(_ query: String, perPage: Int, sort: String? = nil, order: String? = nil,
+                    _ apply: @escaping (Int, [[String: Any]]) -> Void) {
+            self.search(query, perPage: perPage, sort: sort, order: order, completion: group.collect { apply($0.0, $0.1) })
         }
 
         search("is:pr is:open archived:false user:\(owner) created:<=\(isoDateTime(now.addingTimeInterval(-openPRMinAge)))",
-               perPage: 100) { total, items in
+               perPage: 100, sort: "created", order: "asc") { total, items in
             snapshot.openCount = total
-            var counts: [String: Int] = [:]
-            var oldest: [String: Date] = [:]
-            for item in items {
-                let repo = GitHubService.repoName(item)
-                counts[repo, default: 0] += 1
-                if let created = parseDate(item["created_at"]) {
-                    oldest[repo] = min(oldest[repo] ?? created, created)
-                }
-            }
-            snapshot.openByRepo = counts.map { (repo: $0.key, count: $0.value, oldest: oldest[$0.key]) }
-                .sorted { $0.count != $1.count ? $0.count > $1.count : $0.repo < $1.repo }
+            snapshot.openPRs = items.compactMap { item -> OpenPR? in
+                guard let created = parseDate(item["created_at"]),
+                      let number = (item["number"] as? NSNumber)?.intValue else { return nil }
+                return OpenPR(repo: GitHubService.repoName(item), number: number,
+                              title: item["title"] as? String ?? "", created: created)
+            }.sorted { $0.created < $1.created }
         }
         search("is:pr is:merged user:\(owner) merged:>=\(isoDateTime(now.addingTimeInterval(-86400)))",
                perPage: 1) { total, _ in
@@ -112,10 +145,13 @@ final class GitHubService {
         }
     }
 
-    private func search(_ query: String, perPage: Int,
+    private func search(_ query: String, perPage: Int, sort: String?, order: String?,
                         completion: @escaping (Result<(Int, [[String: Any]]), Error>) -> Void) {
+        var parameters = ["q": query, "per_page": String(perPage)]
+        parameters["sort"] = sort
+        parameters["order"] = order
         var request = URLRequest(url: url(URL(string: "https://api.github.com/search/issues")!,
-                                          query: ["q": query, "per_page": String(perPage)]))
+                                          query: parameters))
         request.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")

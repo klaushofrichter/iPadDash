@@ -115,13 +115,15 @@ down turns its row red, with how long it has been down.
 
 ### GitHub
 
-Open pull requests by repository with the age of the oldest, and the most recent
-merges with their target branch. More than five open pull requests turns the
-headline red.
+The oldest open pull requests with their age (up to five, then "… plus 3 other
+PRs"), and the most recent merges with their target branch. Two things turn it red:
+five or more open pull requests, and any pull request open for more than a day,
+whose row is red too. Pull requests younger than 15 minutes are taken to be work in
+progress and left out.
 
 <p>
-  <img src="docs/screenshots/github.png" width="32%" alt="GitHub page: one open pull request and recent merges">
-  <img src="docs/screenshots/github-many.png" width="32%" alt="GitHub page: eight open pull requests, headline in red">
+  <img src="docs/screenshots/github.png" width="32%" alt="GitHub page: three open pull requests, oldest first, and recent merges">
+  <img src="docs/screenshots/github-many.png" width="32%" alt="GitHub page: eight open pull requests, two of them older than a day in red">
 </p>
 
 ### Network & Battery
@@ -212,8 +214,8 @@ later.
   Most days the answer is the clock.
 - **Knowing a website is down before a visitor says so.** The uptime page turns a
   row red; the summary page says which site and for how long.
-- **Keeping pull requests from piling up.** Open pull requests by repository, with
-  their age, and a red headline when there are too many.
+- **Keeping pull requests from piling up.** The oldest open pull requests with
+  their age, red when there are too many or one has waited more than a day.
 - **A daily nudge.** Steps against the day's pace, and how much of the Claude
   usage window is left.
 - **A clock and weather station** that happens to tell you when something broke.
