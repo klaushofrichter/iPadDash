@@ -8,6 +8,8 @@
 
 **A calm dashboard for an iPad that Apple stopped supporting years ago.**
 
+<img src="docs/desk.jpg" width="100%" alt="Illustration (AI-generated): an old silver iPad on a stand showing the iPadDash summary page, on a cluttered desk in front of two monitors">
+
 iPadDash turns an old iPad (an iPad Air from 2013 on iOS 12 works fine) into an
 always-on status display: one glance tells you whether anything needs attention,
 and if nothing does, it shows the time and the weather and stays out of the way.
