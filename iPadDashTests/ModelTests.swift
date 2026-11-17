@@ -105,7 +105,7 @@ final class ModelTests: XCTestCase {
         }
         // 2.5 of 5 hours left: pace 50 %.
         XCTAssertEqual(window(actual: 60, hoursLeft: 2.5).status, "Overuse")
-        XCTAssertTrue(window(actual: 60, hoursLeft: 2.5).overuse)
+        XCTAssertTrue(window(actual: 60, hoursLeft: 2.5).alert)
         XCTAssertEqual(window(actual: 51, hoursLeft: 2.5).status, "On pace")
         XCTAssertEqual(window(actual: 4, hoursLeft: 2.5).status, "Underuse")
         XCTAssertEqual(window(actual: 4, hoursLeft: 2.5).caption, "pace 50% / actual 4%")
@@ -118,6 +118,59 @@ final class ModelTests: XCTestCase {
         // Nothing reported.
         XCTAssertFalse(window(actual: nil, hoursLeft: 2).available)
         XCTAssertFalse(window(actual: 10, hoursLeft: nil).available)
+    }
+
+    func testUsageWindowAlertRules() {
+        let now = time(12)
+        // A 5-hour session at a given pace.
+        func alert(actual: Double?, pace: Double) -> Bool {
+            let w = UsageWindow(name: "Session", actual: actual,
+                                reset: now.addingTimeInterval(5 * (1 - pace / 100) * 3600), windowHours: 5, now: now)
+            if actual != nil { XCTAssertEqual(Double(w.pace), pace, "pace") }
+            return w.alert
+        }
+        // Below 20 % pace: no pace alert, however high the usage (this window has no limit).
+        XCTAssertFalse(alert(actual: 90, pace: 10))
+        XCTAssertFalse(alert(actual: 90, pace: 19))
+        // From 20 % on: red as soon as the usage is above the pace, no tolerance.
+        XCTAssertFalse(alert(actual: 20, pace: 20))
+        XCTAssertTrue(alert(actual: 21, pace: 20))
+        XCTAssertFalse(alert(actual: 50, pace: 50))
+        XCTAssertTrue(alert(actual: 50.5, pace: 50))
+        XCTAssertFalse(alert(actual: 45, pace: 79))   // early warning not yet
+        XCTAssertFalse(alert(actual: 75, pace: 79))
+        // From 80 % on: also red within 10 points below the pace.
+        XCTAssertTrue(alert(actual: 70, pace: 80))
+        XCTAssertFalse(alert(actual: 69, pace: 80))
+        XCTAssertTrue(alert(actual: 75, pace: 85))
+        XCTAssertFalse(alert(actual: 74, pace: 85))
+        XCTAssertTrue(alert(actual: 95, pace: 85))
+        XCTAssertTrue(alert(actual: 90, pace: 100))   // the reset instant still counts
+        // Ended or unknown windows never alert.
+        XCTAssertFalse(UsageWindow(name: "Session", actual: 99, reset: now.addingTimeInterval(-3600),
+                                   windowHours: 5, now: now).alert)
+        XCTAssertFalse(alert(actual: nil, pace: 90))
+        // The weekly window follows the same rules: 168 h, 30 h left = pace 82 %.
+        let weekly = UsageWindow(name: "Weekly", actual: 73, reset: now.addingTimeInterval(30 * 3600),
+                                 windowHours: 168, now: now)
+        XCTAssertEqual(weekly.pace, 82)
+        XCTAssertTrue(weekly.alert)
+    }
+
+    func testSessionAbove80PercentAlwaysAlerts() {
+        let now = time(12)
+        // Session: 4.5 of 5 h left = pace 10 %. Weekly: 160 of 168 h left = pace 5 %.
+        func alerts(session: Double, weekly: Double) -> [String] {
+            let reading = ClaudeReading(timestamp: now, session: session, weekly: weekly,
+                                        sessionReset: now.addingTimeInterval(4.5 * 3600),
+                                        weeklyReset: now.addingTimeInterval(160 * 3600))
+            return ClaudeSummary(reading: reading, now: now).usageAlerts.map { $0.what }
+        }
+        XCTAssertEqual(alerts(session: 80, weekly: 10), [])
+        XCTAssertEqual(alerts(session: 80.5, weekly: 10), ["Claude Session Usage"])
+        XCTAssertEqual(alerts(session: 95, weekly: 10), ["Claude Session Usage"])
+        // Only the session has the limit: the weekly window waits for 20 % pace.
+        XCTAssertEqual(alerts(session: 10, weekly: 90), [])
     }
 
     func testClaudeHero() {
