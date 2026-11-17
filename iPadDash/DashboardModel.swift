@@ -11,6 +11,7 @@ private let onPaceTolerance = 2.0          // percentage points either way
 let alertFromPace = 20
 let earlyWarningFromPace = 80
 let earlyWarningMargin = 10
+let sessionAlertAbove = 80.0   // session usage above this alerts at any pace
 
 /// Liquid's `round` on a float: half away from zero.
 private func liquidRound(_ x: Double) -> Int { return Int(x.rounded()) }
@@ -59,21 +60,27 @@ struct UsageWindow {
     let delta: Double
     let expired: Bool
     let status: String        // "Overuse" / "Underuse" / "On pace" / "Expired" / "n/a"
+    let alertAbove: Double?   // usage that alerts at any pace; nil for none
 
     var available: Bool { return actual != nil && status != "n/a" }
     /// Drawn in red and raised as an alert:
     /// - never in the first 20 % of the window (too early to tell),
     /// - from 20 % on, when the usage is above the pace,
     /// - from 80 % on, also when the usage is within 10 points of the pace
-    ///   (pace 85, usage 75): late in a window usage can rise fast.
+    ///   (pace 85, usage 75): late in a window usage can rise fast,
+    /// - at any pace, when the usage is above `alertAbove` (the session's 80 %).
     var alert: Bool {
-        guard let actual = actual, available, !expired, pace >= alertFromPace else { return false }
+        guard let actual = actual, available, !expired else { return false }
+        if let limit = alertAbove, actual > limit { return true }
+        guard pace >= alertFromPace else { return false }
         return actual > Double(pace)
             || (pace >= earlyWarningFromPace && actual >= Double(pace - earlyWarningMargin))
     }
 
-    init(name: String, actual: Double?, reset: Date?, windowHours: Double, now: Date) {
+    init(name: String, actual: Double?, reset: Date?, windowHours: Double, now: Date,
+         alertAbove: Double? = nil) {
         self.name = name
+        self.alertAbove = alertAbove
         self.actual = actual
         guard let actual = actual, let reset = reset else {
             pace = 0; delta = 0; expired = false; status = "n/a"
@@ -116,7 +123,7 @@ struct ClaudeSummary {
         weekly = UsageWindow(name: "Weekly", actual: reading.weekly, reset: reading.weeklyReset,
                              windowHours: 168, now: now)
         session = UsageWindow(name: "Session", actual: reading.session, reset: reading.sessionReset,
-                              windowHours: 5, now: now)
+                              windowHours: 5, now: now, alertAbove: sessionAlertAbove)
         if !weekly.available {
             hero = "n/a"
         } else if weekly.expired {

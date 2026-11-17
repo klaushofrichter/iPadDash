@@ -148,7 +148,8 @@ windows. This page started the project, as a port of a TRMNL e-ink design.
 A Claude window (the 5-hour session or the week) turns red, and shows on the
 summary page, once 20 % of it has passed and the usage is above the pace. From
 80 % on, it also turns red when the usage is within 10 points of the pace
-(pace 85 %, usage 75 %), because usage late in a window can rise fast.
+(pace 85 %, usage 75 %), because usage late in a window can rise fast. A
+session above 80 % usage is always red, whatever the pace.
 
 ### Night screen
 
