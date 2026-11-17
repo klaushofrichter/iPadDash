@@ -145,6 +145,11 @@ is red, such as a low battery, an unreachable plug or a network outage.
 Daily steps against pace, and Claude usage against the weekly and session
 windows. This page started the project, as a port of a TRMNL e-ink design.
 
+A Claude window (the 5-hour session or the week) turns red, and shows on the
+summary page, once 20 % of it has passed and the usage is above the pace. From
+80 % on, it also turns red when the usage is within 10 points of the pace
+(pace 85 %, usage 75 %), because usage late in a window can rise fast.
+
 ### Night screen
 
 From 10 PM to 5 AM the dashboard shows only a dim clock at the lowest screen

@@ -7,6 +7,10 @@ let stepsGoal = 10_000
 private let stepsWindowStartMin = 6 * 60   // 06:00 local
 private let stepsWindowEndMin = 21 * 60    // 21:00 local
 private let onPaceTolerance = 2.0          // percentage points either way
+// Usage-window alerts (see UsageWindow.alert); all in percent of the window.
+let alertFromPace = 20
+let earlyWarningFromPace = 80
+let earlyWarningMargin = 10
 
 /// Liquid's `round` on a float: half away from zero.
 private func liquidRound(_ x: Double) -> Int { return Int(x.rounded()) }
@@ -57,8 +61,16 @@ struct UsageWindow {
     let status: String        // "Overuse" / "Underuse" / "On pace" / "Expired" / "n/a"
 
     var available: Bool { return actual != nil && status != "n/a" }
-    /// Ahead of pace by more than the tolerance: drawn in red.
-    var overuse: Bool { return status == "Overuse" }
+    /// Drawn in red and raised as an alert:
+    /// - never in the first 20 % of the window (too early to tell),
+    /// - from 20 % on, when the usage is above the pace,
+    /// - from 80 % on, also when the usage is within 10 points of the pace
+    ///   (pace 85, usage 75): late in a window usage can rise fast.
+    var alert: Bool {
+        guard let actual = actual, available, !expired, pace >= alertFromPace else { return false }
+        return actual > Double(pace)
+            || (pace >= earlyWarningFromPace && actual >= Double(pace - earlyWarningMargin))
+    }
 
     init(name: String, actual: Double?, reset: Date?, windowHours: Double, now: Date) {
         self.name = name
@@ -118,10 +130,10 @@ struct ClaudeSummary {
 }
 
 extension ClaudeSummary {
-    /// One red item per window that is ahead of pace, with the usage and the pace
+    /// One red item per window that alerts (see UsageWindow.alert), with the usage and the pace
     /// ("Claude Session Usage" · "60% · pace 50%"), like the cluster's "Cluster CPU" · "92%".
     var usageAlerts: [PageAlert] {
-        return [session, weekly].filter { $0.overuse }.map {
+        return [session, weekly].filter { $0.alert }.map {
             PageAlert("Claude \($0.name) Usage", "\(percentText($0.actual ?? 0))% · pace \($0.pace)%")
         }
     }

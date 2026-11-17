@@ -311,10 +311,10 @@ final class UsageMetricView: UIView {
     func configure(with window: UsageWindow) {
         nameLabel.set(window.name)
         statusLabel.set(window.status)
-        statusLabel.alert = window.overuse
+        statusLabel.alert = window.alert
         paceBar.percent = window.expired ? 0 : Double(window.pace)
         actualBar.percent = window.actual ?? 0
-        actualBar.alert = window.overuse
+        actualBar.alert = window.alert
         captionLabel.set(window.caption)
     }
 }
@@ -429,7 +429,7 @@ final class ClaudePanelView: PanelView {
     func configure(with summary: ClaudeSummary) {
         alerting = summary.stale
         heroLabel.set(summary.hero)
-        heroLabel.alert = summary.weekly.overuse   // the hero reports the weekly window
+        heroLabel.alert = summary.weekly.alert   // the hero reports the weekly window
         weeklyView.configure(with: summary.weekly)
         sessionView.configure(with: summary.session)
         freshnessLabel.set(summary.freshness)
