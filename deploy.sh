@@ -9,8 +9,10 @@
 #
 # Usage:
 #   ./deploy.sh [IPAD] [KEY=VALUE...]   build, patch, sign, install, launch
-#                                       (KEY=VALUE are settings the app saves, e.g. chargePlug=Garland)
+#                                       (KEY=VALUE are settings the app saves, e.g. chargePlug=Garland;
+#                                       quote values with spaces: chargePlug="Window lights")
 #   ./deploy.sh --check    unsigned build + checks only (no iPad or Apple ID needed)
+#   ./deploy.sh --show-settings [KEY=VALUE...]   print the settings as the app gets them
 # IPAD is silver, black, all or a UDID prefix (see ipad-select.sh); it may be
 # left out when only one iPad is connected.
 #
@@ -26,10 +28,23 @@ set -eu
 
 cd "$(dirname "$0")"
 . ./ipad-select.sh
-CHECK=""; IPAD=""; SETTINGS=""
+CHECK=""; IPAD=""; SHOW_SETTINGS=""
+# Afterwards "$@" holds only the KEY=VALUE settings, each one word as given, so a
+# value with spaces stays whole: chargePlug="Window lights".
 for arg in "$@"; do
-    case $arg in --check) CHECK=1 ;; *=*) SETTINGS="$SETTINGS $arg" ;; *) IPAD=$arg ;; esac
+    shift
+    case $arg in
+        --check) CHECK=1 ;;
+        --show-settings) SHOW_SETTINGS=1 ;;
+        *=*) set -- "$@" "$arg" ;;
+        *) IPAD=$arg ;;
+    esac
 done
+if [ -n "$SHOW_SETTINGS" ]; then
+    # The settings the app would get, one per line (used by test.sh).
+    for setting in "$@"; do printf '%s\n' "$setting"; done
+    exit 0
+fi
 DIRTY=${DIRTY:-}
 if [ -z "$CHECK" ] && [ -z "$DIRTY" ]; then
     # Everything that goes on the iPads must be in the tagged commit, on GitHub.
@@ -149,7 +164,7 @@ for udid in $udids; do
         ideviceimagemounter $link -u "$udid" mount "$DDI_DIR/DeveloperDiskImage.dmg" \
             "$DDI_DIR/DeveloperDiskImage.dmg.signature" >/dev/null
     fi
-    idevicedebug $link -u "$udid" --detach run "$bundle_id" $SETTINGS && echo "Launched on the $name"
+    idevicedebug $link -u "$udid" --detach run "$bundle_id" "$@" && echo "Launched on the $name"
 done
 
 # Tag, push the tag, and make the GitHub source release, once something was installed.
