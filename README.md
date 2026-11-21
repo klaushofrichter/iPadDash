@@ -317,7 +317,8 @@ a key is missing. To build your own dashboard, see
    ```
 
    With several iPads, name one by its color or use `all`: `./deploy.sh black`.
-   Settings can be passed along: `./deploy.sh black chargePlug=Garland`.
+   Settings can be passed along: `./deploy.sh black chargePlug=Garland`, with
+   quotes around a value that has spaces: `chargePlug="Window lights"`.
 
    Each deploy is a release: the code has to be merged to `main` through a pull
    request (see the checks below), and after

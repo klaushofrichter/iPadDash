@@ -3,6 +3,12 @@
 # or the one named by SIMULATOR (a UDID). No iPad or Apple ID needed.
 set -eu
 cd "$(dirname "$0")"
+# deploy.sh passes each KEY=VALUE setting as one launch argument, spaces included.
+expected=$(printf '%s\n' 'chargePlug=Window lights' 'b=2')
+actual=$(./deploy.sh --show-settings silver 'chargePlug=Window lights' --check b=2)
+[ "$actual" = "$expected" ] || {
+    printf 'error: deploy.sh settings\nexpected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2; exit 1; }
+echo "deploy.sh settings: ok"
 sim=${SIMULATOR:-$(xcrun simctl list devices available | grep '^ *iPad' |
     grep -oE '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}' | head -1)}
 [ -n "$sim" ] || { echo "error: no iPad simulator installed" >&2; exit 1; }
