@@ -218,15 +218,17 @@ final class NetworkBatteryPageViewController: DashboardPageViewController {
         connectionRow.set("Connection", connectionText, alert: network.path?.status == .unsatisfied && networkRed)
         wifiRow.set("Wi-Fi network", ssid ?? (network.path?.usesInterfaceType(.wifi) == true ? "name not available" : "none"))
         addressRow.set("IP address", address ?? "none")
+        // Red with the outage: no answer from any server for `Connectivity.alertAfter`.
         responseRow.set("Last server response",
-                        network.lastResponse.map { timeOfDayFormatter.string(from: $0) } ?? "none yet")
+                        network.lastResponse.map { "\(timeOfDayFormatter.string(from: $0)) · \(agoText(now.timeIntervalSince($0)))" }
+                            ?? "none yet",
+                        alert: networkRed)
 
         instanceLabel.set(UIDevice.current.name)
         if let newer = version.newerRelease {
             versionRow.set("Version \(version.installed)", "\(newer) available", alert: true)
         } else {
-            versionRow.set("Version \(version.installed)", version.latest == nil ? "not checked yet"
-                : version.latest == version.installed ? "latest release" : "not a release")
+            versionRow.set("Version \(version.installed)", VersionCheck.status(installed: version.installed, latest: version.latest))
         }
         self.alerts = alerts
     }

@@ -34,8 +34,14 @@ final class VersionCheck {
         fetchJSON(request, errorKey: "message") { result in
             // A failed check changes nothing: the network has its own alerts.
             guard case .success(let json) = result, let tag = json["tag_name"] as? String else { return }
-            self.latest = VersionCheck.version(fromTag: tag)
+            let latest = VersionCheck.version(fromTag: tag)
+            self.latest = latest
             self.lastChecked = Date()
+            // deploy.sh launches the app before it makes the release, so right after a
+            // deploy the installed version is newer than the latest one: look again soon.
+            if VersionCheck.isNewer(self.installed, than: latest) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + VersionCheck.recheckAfter) { [weak self] in self?.check() }
+            }
             NotificationCenter.default.post(name: VersionCheck.didChange, object: nil)
         }
     }
@@ -44,6 +50,18 @@ final class VersionCheck {
     var newerRelease: String? {
         guard let latest = latest, VersionCheck.isNewer(latest, than: installed) else { return nil }
         return latest
+    }
+
+    /// How soon to look again while the installed version is ahead of the latest release.
+    static let recheckAfter: TimeInterval = 5 * 60
+
+    /// The text beside the version on the Network & Battery page (a newer release is
+    /// shown in red there instead).
+    static func status(installed: String, latest: String?) -> String {
+        guard let latest = latest else { return "not checked yet" }
+        if latest == installed { return "latest release" }
+        if isNewer(installed, than: latest) { return "newer than the latest release" }
+        return "development build"
     }
 
     /// The red item for the summary page.

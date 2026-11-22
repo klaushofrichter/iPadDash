@@ -279,6 +279,28 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(built.absoluteString, "https://example.com/api?a=x%20y&tz=%2B01:00")
     }
 
+    func testAgoText() {
+        XCTAssertEqual(agoText(0), "just now")
+        XCTAssertEqual(agoText(59), "just now")
+        XCTAssertEqual(agoText(60), "one minute ago")
+        XCTAssertEqual(agoText(119), "one minute ago")
+        XCTAssertEqual(agoText(120), "2 minutes ago")
+        XCTAssertEqual(agoText(59 * 60), "59 minutes ago")
+        XCTAssertEqual(agoText(3600), "one hour ago")
+        XCTAssertEqual(agoText(3 * 3600 + 59), "3 hours ago")
+        XCTAssertEqual(agoText(-5), "just now", "a clock that went back")
+    }
+
+    func testVersionStatus() {
+        XCTAssertEqual(VersionCheck.status(installed: "2026.11.21.1", latest: nil), "not checked yet")
+        XCTAssertEqual(VersionCheck.status(installed: "2026.11.21.1", latest: "2026.11.21.1"), "latest release")
+        // Right after a deploy: the app checked before deploy.sh made the release.
+        // This read "not a release" on the silver iPad.
+        XCTAssertEqual(VersionCheck.status(installed: "2026.11.21.1", latest: "2026.11.17.1"),
+                       "newer than the latest release")
+        XCTAssertEqual(VersionCheck.status(installed: "dev", latest: "2026.11.17.1"), "development build")
+    }
+
     func testVersionComparison() {
         XCTAssertEqual(VersionCheck.version(fromTag: "v2026.11.10.11"), "2026.11.10.11")
         XCTAssertEqual(VersionCheck.version(fromTag: "2026.11.10.11"), "2026.11.10.11")
