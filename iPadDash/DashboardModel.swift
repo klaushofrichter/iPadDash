@@ -168,6 +168,15 @@ func durationText(_ seconds: TimeInterval) -> String {
     return counted(count, unit)
 }
 
+/// "just now" / "one minute ago" / "12 minutes ago" / "one hour ago" / "3 hours ago".
+func agoText(_ seconds: TimeInterval) -> String {
+    let minutes = max(Int(seconds), 0) / 60
+    if minutes < 1 { return "just now" }
+    if minutes < 60 { return minutes == 1 ? "one minute ago" : "\(minutes) minutes ago" }
+    let hours = minutes / 60
+    return hours == 1 ? "one hour ago" : "\(hours) hours ago"
+}
+
 /// "1 PR" / "3 PRs".
 func counted(_ n: Int, _ noun: String) -> String {
     return "\(n) \(noun)\(n == 1 ? "" : "s")"
